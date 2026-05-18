@@ -10,6 +10,8 @@ router.post('/register', validate(registerSchema), authController.register);
 router.post('/login', validate(loginSchema), authController.login);
 router.post('/logout', authController.logout);
 router.get('/refresh', authController.refreshToken);
+router.post('/refresh', authController.refreshToken);
 router.get('/me', protect, authController.getMe);
+router.patch('/profile', protect, authController.updateProfile);
 
 export default router;

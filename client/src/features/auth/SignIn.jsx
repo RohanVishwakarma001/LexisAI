@@ -28,7 +28,7 @@ export default function SignIn() {
       toast.success('Successfully logged in');
       navigate('/dashboard');
     } catch (error) {
-      toast.error('Invalid credentials');
+      toast.error(error.response?.data?.message || 'Invalid credentials');
     }
   };
 

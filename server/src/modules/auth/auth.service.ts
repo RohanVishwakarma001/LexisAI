@@ -68,3 +68,19 @@ export const refreshAuthTokens = async (token: string) => {
     throw new AppError('Invalid refresh token', 401);
   }
 };
+
+export const updateUserProfile = async (
+  userId: string,
+  data: {
+    firstName?: string;
+    lastName?: string;
+    organizationName?: string;
+    phoneNumber?: string;
+    avatar?: string;
+  }
+) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data,
+  });
+};

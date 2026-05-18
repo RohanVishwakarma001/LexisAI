@@ -1,12 +1,18 @@
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import xss from 'xss-clean';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { env } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
+import authRoutes from './modules/auth/auth.routes';
+import caseRoutes from './modules/cases/cases.routes';
+import documentRoutes from './modules/documents/documents.routes';
+import aiRoutes from './modules/ai/ai.routes';
+import analyticsRoutes from './modules/analytics/analytics.routes';
+import paymentsRoutes from './modules/payments/payments.routes';
 
 const app: Application = express();
 
@@ -18,7 +24,6 @@ app.use(
     credentials: true,
   })
 );
-app.use(xss());
 
 // Rate Limiting
 const limiter = rateLimit({
@@ -38,6 +43,9 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
 
+// Serve uploads statically
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Base Route
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -46,10 +54,13 @@ app.get('/', (req, res) => {
   });
 });
 
-// Setup Routes (Placeholder for now)
-// app.use('/api/v1/auth', authRoutes);
-// app.use('/api/v1/users', userRoutes);
-// app.use('/api/v1/cases', caseRoutes);
+// Setup Routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/cases', caseRoutes);
+app.use('/api/v1/documents', documentRoutes);
+app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/analytics', analyticsRoutes);
+app.use('/api/v1/payments', paymentsRoutes);
 
 // Error Handling
 app.use(notFoundHandler);

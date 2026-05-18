@@ -18,7 +18,7 @@ const signUpSchema = z.object({
 
 export default function CreateAccount() {
   const navigate = useNavigate();
-  const login = useAuthStore((state) => state.login);
+  const registerAction = useAuthStore((state) => state.register);
   
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(signUpSchema),
@@ -26,13 +26,11 @@ export default function CreateAccount() {
 
   const onSubmit = async (data) => {
     try {
-      // Simulate account creation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await login(data);
+      await registerAction(data);
       toast.success('Account created successfully');
       navigate('/dashboard');
     } catch (error) {
-      toast.error('Failed to create account');
+      toast.error(error.response?.data?.message || 'Failed to create account');
     }
   };
 

@@ -3,6 +3,7 @@ import { AppError } from '../utils/AppError';
 import { verifyAccessToken } from '../utils/jwt';
 import prisma from '../database';
 import { Role } from '@prisma/client';
+import { logger } from '../utils/logger';
 
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -24,10 +25,19 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
     // Verify token
     const decoded = verifyAccessToken(token);
 
-    // Check if user still exists
-    const currentUser = await prisma.user.findUnique({
-      where: { id: decoded.id },
-    });
+    // Check if user still exists (with database resilience for transient PgBouncer pooler timeouts)
+    let currentUser;
+    try {
+      currentUser = await prisma.user.findUnique({
+        where: { id: decoded.id },
+      });
+    } catch (dbError) {
+      logger.warn('Transient database connection error detected during authentication. Retrying in 150ms...', dbError);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      currentUser = await prisma.user.findUnique({
+        where: { id: decoded.id },
+      });
+    }
 
     if (!currentUser || currentUser.deletedAt) {
       return next(new AppError('The user belonging to this token no longer exists.', 401));

@@ -12,12 +12,13 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   REDIS_URL: z.string().optional(),
-  AWS_ACCESS_KEY_ID: z.string().optional(),
-  AWS_SECRET_ACCESS_KEY: z.string().optional(),
-  AWS_REGION: z.string().optional(),
-  AWS_S3_BUCKET: z.string().optional(),
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
+  RAZORPAY_KEY_ID: z.string().default('rzp_test_LzQYFj61tq9X8R'),
+  RAZORPAY_KEY_SECRET: z.string().default('n9qC1h4Xz8RuY5tQ'),
 });
 
 const _env = envSchema.safeParse(process.env);

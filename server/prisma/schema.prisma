@@ -21,16 +21,19 @@ enum CaseStatus {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  firstName String?
-  lastName  String?
-  role      Role     @default(USER)
-  avatar    String?
+  id               String   @id @default(uuid())
+  email            String   @unique
+  password         String
+  firstName        String?
+  lastName         String?
+  role             Role     @default(USER)
+  avatar           String?
+  organizationName String?
+  phoneNumber      String?
   
   cases     Case[]   @relation("ClientCases")
   lawyerCases Case[] @relation("LawyerCases")
+  payments  Payment[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -83,4 +86,20 @@ model Document {
 
   @@index([caseId])
   @@map("documents")
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  orderId       String   @unique
+  paymentId     String?
+  signature     String?
+  amount        Int      // stored in paise (1 INR = 100 paise)
+  currency      String   @default("INR")
+  status        String   // 'PENDING' | 'SUCCESS' | 'FAILED'
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("payments")
 }

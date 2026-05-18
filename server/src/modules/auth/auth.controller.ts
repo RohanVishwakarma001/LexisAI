@@ -85,3 +85,23 @@ export const getMe = asyncHandler(async (req: Request, res: Response) => {
     data: { user: userWithoutPassword },
   });
 });
+
+export const updateProfile = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { firstName, lastName, organizationName, phoneNumber, avatar } = req.body;
+
+  const updatedUser = await authService.updateUserProfile(user.id, {
+    firstName,
+    lastName,
+    organizationName,
+    phoneNumber,
+    avatar,
+  });
+
+  const { password, ...userWithoutPassword } = updatedUser;
+
+  res.status(200).json({
+    status: 'success',
+    data: { user: userWithoutPassword },
+  });
+});

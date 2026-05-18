@@ -1,6 +1,7 @@
-import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { useAuthStore } from '@/store/useAuthStore';
 
 // Layouts
 import PublicLayout from '@/components/layout/PublicLayout';
@@ -8,7 +9,7 @@ import SharedLayout from '@/components/layout/SharedLayout';
 
 // Fallback Loading Component
 const PageLoader = () => (
-  <div className="flex-1 flex items-center justify-center min-h-screen">
+  <div className="flex-grow flex items-center justify-center min-h-screen bg-background">
     <Loader2 className="w-8 h-8 animate-spin text-primary" />
   </div>
 );
@@ -26,7 +27,29 @@ const AIAnalyticsInsights = lazy(() => import('@/features/analytics/AIAnalyticsI
 const AdminPanelFirmManagement = lazy(() => import('@/features/admin/AdminPanelFirmManagement'));
 const SettingsOrganization = lazy(() => import('@/features/settings/SettingsOrganization'));
 
+// Auth Route: Redirects to /dashboard if logged in
+const AuthRoute = () => {
+  const { isAuthenticated } = useAuthStore();
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Outlet />;
+};
+
+// Protected Route: Redirects to /sign-in if not logged in
+const ProtectedRoute = () => {
+  const { isAuthenticated } = useAuthStore();
+  return isAuthenticated ? <Outlet /> : <Navigate to="/sign-in" replace />;
+};
+
 export function AppRouter() {
+  const { checkAuth, isLoading } = useAuthStore();
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
   return (
     <BrowserRouter>
       <Suspense fallback={<PageLoader />}>
@@ -36,18 +59,23 @@ export function AppRouter() {
             <Route path="/" element={<LandingPage />} />
           </Route>
           
-          <Route path="/sign-in" element={<SignIn />} />
-          <Route path="/create-account" element={<CreateAccount />} />
+          {/* Guest/Auth Routes */}
+          <Route element={<AuthRoute />}>
+            <Route path="/sign-in" element={<SignIn />} />
+            <Route path="/create-account" element={<CreateAccount />} />
+          </Route>
 
           {/* Protected Dashboard Routes */}
-          <Route path="/dashboard" element={<SharedLayout />}>
-            <Route index element={<MainDashboard />} />
-            <Route path="documents" element={<DocumentManagement />} />
-            <Route path="cases" element={<CaseManagement />} />
-            <Route path="research" element={<AILegalAssistant />} />
-            <Route path="analytics" element={<AIAnalyticsInsights />} />
-            <Route path="admin" element={<AdminPanelFirmManagement />} />
-            <Route path="settings" element={<SettingsOrganization />} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<SharedLayout />}>
+              <Route index element={<MainDashboard />} />
+              <Route path="documents" element={<DocumentManagement />} />
+              <Route path="cases" element={<CaseManagement />} />
+              <Route path="research" element={<AILegalAssistant />} />
+              <Route path="analytics" element={<AIAnalyticsInsights />} />
+              <Route path="admin" element={<AdminPanelFirmManagement />} />
+              <Route path="settings" element={<SettingsOrganization />} />
+            </Route>
           </Route>
 
           {/* Fallback */}
