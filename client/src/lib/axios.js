@@ -30,8 +30,13 @@ api.interceptors.response.use(
     // Any status codes that falls outside the range of 2xx cause this function to trigger
     const originalRequest = error.config;
 
+    // Skip token refresh logic for authentication endpoints to prevent credential errors or loops
+    const isAuthEndpoint = originalRequest.url.includes('/auth/login') || 
+                           originalRequest.url.includes('/auth/register') || 
+                           originalRequest.url.includes('/auth/refresh');
+
     // Handle 401 Unauthorized (Token expired)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
 
       try {

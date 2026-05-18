@@ -7,14 +7,14 @@ const setTokenCookies = (res: Response, accessToken: string, refreshToken: strin
   res.cookie('access_token', accessToken, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
     maxAge: 15 * 60 * 1000, // 15 mins
   });
 
   res.cookie('refresh_token', refreshToken, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/api/v1/auth/refresh', // Restrict refresh token to refresh endpoint
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
