@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  LAWYER
+}
+
+enum CaseStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  ARCHIVED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String?
+  lastName  String?
+  role      Role     @default(USER)
+  avatar    String?
+  
+  cases     Case[]   @relation("ClientCases")
+  lawyerCases Case[] @relation("LawyerCases")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@map("users")
+}
+
+model Case {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  status      CaseStatus @default(OPEN)
+  
+  clientId    String
+  client      User       @relation("ClientCases", fields: [clientId], references: [id])
+  
+  lawyerId    String?
+  lawyer      User?      @relation("LawyerCases", fields: [lawyerId], references: [id])
+  
+  documents   Document[]
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+
+  @@index([clientId])
+  @@index([lawyerId])
+  @@index([status])
+  @@map("cases")
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  fileName    String
+  fileUrl     String
+  fileType    String
+  fileSize    Int
+  
+  metadata    Json?    // AI summary, OCR data
+  
+  caseId      String
+  case        Case     @relation(fields: [caseId], references: [id])
+  
+  uploadedBy  String
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([caseId])
+  @@map("documents")
+}
