@@ -2,7 +2,7 @@ import prisma from '../../database';
 import { Role } from '@prisma/client';
 import { AppError } from '../../utils/AppError';
 import path from 'path';
-import { uploadToCloudinary } from '../../utils/cloudinary';
+import { uploadToCloudinary, purgeFile } from '../../utils/cloudinary';
 
 export const getDocuments = async (userId: string, role: Role, caseId?: string) => {
   let caseFilter: any = {};
@@ -73,10 +73,12 @@ export const createDocument = async (
 
   // Attempt Cloudinary ingestion with a graceful local disk fallback if credentials aren't present
   let fileUrl = `/uploads/${file.filename}`;
+  let publicId: string | undefined = undefined;
   try {
     const cloudUpload = await uploadToCloudinary(file.path);
     if (cloudUpload) {
       fileUrl = cloudUpload.secure_url;
+      publicId = cloudUpload.public_id;
     }
   } catch (cloudinaryError) {
     console.error('❌ Cloudinary cloud media storage upload failed:', cloudinaryError);
@@ -95,6 +97,7 @@ export const createDocument = async (
         aiSummary,
         indexedAt: new Date().toISOString(),
         status: 'INDEXED',
+        publicId,
       },
     },
     include: {
@@ -116,7 +119,7 @@ export const deleteDocument = async (documentId: string, userId: string, role: R
     },
   });
 
-  if (!document || document.deletedAt) {
+  if (!document) {
     throw new AppError('Document not found', 404);
   }
 
@@ -129,8 +132,11 @@ export const deleteDocument = async (documentId: string, userId: string, role: R
     throw new AppError('You do not have permission to delete this document', 403);
   }
 
-  return prisma.document.update({
+  // 1. Purge the media file from physical storage (Cloudinary or local disk)
+  await purgeFile(document.fileUrl, document.metadata);
+
+  // 2. Permanently delete the document row from the database (Hard Delete)
+  return prisma.document.delete({
     where: { id: documentId },
-    data: { deletedAt: new Date() },
   });
 };

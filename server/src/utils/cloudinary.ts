@@ -67,3 +67,52 @@ export const uploadToCloudinary = async (
     );
   });
 };
+
+/**
+ * Deletes an asset from Cloudinary by its public ID
+ * @param publicId Cloudinary public asset ID
+ */
+export const deleteFromCloudinary = async (publicId: string): Promise<boolean> => {
+  if (!isConfigured || !publicId) {
+    return false;
+  }
+
+  return new Promise((resolve) => {
+    cloudinary.uploader.destroy(publicId, (error, result) => {
+      if (error) {
+        console.error('❌ Failed to delete asset from Cloudinary:', error);
+        return resolve(false);
+      }
+      resolve(result?.result === 'ok');
+    });
+  });
+};
+
+/**
+ * Universal file purger that detects the file storage medium
+ * (Cloudinary or local disk) and purges the asset permanently.
+ * @param fileUrl The URL of the stored file
+ * @param metadata The JSON metadata associated with the document
+ */
+export const purgeFile = async (fileUrl: string, metadata: any): Promise<void> => {
+  // 1. Purge from Cloudinary if publicId exists in metadata
+  if (metadata && typeof metadata === 'object' && metadata.publicId) {
+    console.log(`🗑️ Initiating Cloudinary asset purge for Public ID: ${metadata.publicId}`);
+    await deleteFromCloudinary(metadata.publicId);
+  }
+
+  // 2. Purge from local disk if it's stored in the local sandbox '/uploads/' directory
+  if (fileUrl && fileUrl.startsWith('/uploads/')) {
+    const fileName = fileUrl.replace('/uploads/', '');
+    const path = require('path');
+    const localPath = path.join(process.cwd(), 'uploads', fileName);
+    try {
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+        console.log(`🗑️ Local file purged successfully from sandbox disk: ${localPath}`);
+      }
+    } catch (unlinkError) {
+      console.error(`❌ Failed to delete local sandbox file: ${localPath}`, unlinkError);
+    }
+  }
+};

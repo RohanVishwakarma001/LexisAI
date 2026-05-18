@@ -2,6 +2,7 @@ import prisma from '../../database';
 import { CreateCaseInput, UpdateCaseInput } from './cases.schema';
 import { Role } from '@prisma/client';
 import { AppError } from '../../utils/AppError';
+import { purgeFile } from '../../utils/cloudinary';
 
 export const getCases = async (userId: string, role: Role) => {
   let filter: any = {};
@@ -105,7 +106,7 @@ export const deleteCase = async (caseId: string, userId: string, role: Role) => 
     where: { id: caseId },
   });
 
-  if (!existingCase || existingCase.deletedAt) {
+  if (!existingCase) {
     throw new AppError('Case not found', 404);
   }
 
@@ -113,8 +114,23 @@ export const deleteCase = async (caseId: string, userId: string, role: Role) => 
     throw new AppError('You do not have permission to delete this case', 403);
   }
 
-  return prisma.case.update({
+  // 1. Fetch all documents associated with this case
+  const documents = await prisma.document.findMany({
+    where: { caseId },
+  });
+
+  // 2. Cascade purge all files from physical storage (Cloudinary or local sandbox disk)
+  for (const doc of documents) {
+    await purgeFile(doc.fileUrl, doc.metadata);
+  }
+
+  // 3. Hard delete all document rows associated with this case in the database
+  await prisma.document.deleteMany({
+    where: { caseId },
+  });
+
+  // 4. Hard delete the case record itself permanently from the database
+  return prisma.case.delete({
     where: { id: caseId },
-    data: { deletedAt: new Date() },
   });
 };
