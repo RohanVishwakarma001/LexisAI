@@ -1,10 +1,16 @@
+import http from 'http';
 import app from './app';
 import { env } from './config/env';
 import { logger } from './utils/logger';
+import { initSocket } from './utils/socket';
 
 const PORT = env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
+const server = http.createServer(app);
+
+initSocket(server);
+
+server.listen(PORT, () => {
   logger.info(`🚀 Server running in ${env.NODE_ENV} mode on port ${PORT}`);
 });
 

@@ -21,6 +21,34 @@ export default function DocumentManagement() {
   // Selected document for AI inspection panel
   const [activeDoc, setActiveDoc] = useState(null);
 
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [sources, setSources] = useState([]);
+  const [isAsking, setIsAsking] = useState(false);
+
+  useEffect(() => {
+    setQuestion('');
+    setAnswer('');
+    setSources([]);
+  }, [activeDoc]);
+
+  const handleAskQuestion = async () => {
+    if (!question.trim()) return;
+    setIsAsking(true);
+    try {
+      const response = await api.post(`/documents/${activeDoc.id}/qa`, { question });
+      if (response.data?.status === 'success') {
+        setAnswer(response.data.data.answer);
+        setSources(response.data.data.sourceChunks || []);
+      }
+    } catch (err) {
+      console.error('Q&A failed:', err);
+      toast.error('Failed to get answer from AI');
+    } finally {
+      setIsAsking(false);
+    }
+  };
+
   // Fetch documents and cases
   const fetchData = async () => {
     setIsLoading(true);
@@ -303,9 +331,42 @@ export default function DocumentManagement() {
           {/* OCR text block */}
           <div className="space-y-xs">
             <h4 className="font-label-md text-primary uppercase tracking-widest text-[10px]">OCR Text Index Preview</h4>
-            <div className="p-md bg-surface-container-low rounded-lg border border-primary/10 max-h-[160px] overflow-y-auto font-mono text-[11px] text-on-surface-variant leading-relaxed">
+            <div className="p-md bg-surface-container-low rounded-lg border border-primary/10 max-h-[120px] overflow-y-auto font-mono text-[11px] text-on-surface-variant leading-relaxed">
               {activeDoc.metadata?.ocrText || 'No OCR transcript available.'}
             </div>
+          </div>
+
+          {/* RAG Q&A Block */}
+          <div className="space-y-xs border-t border-outline-variant/30 pt-md">
+            <h4 className="font-label-md text-primary uppercase tracking-widest text-[10px]">Document Q&A (RAG Assistant)</h4>
+            <div className="flex gap-xs">
+              <input
+                type="text"
+                placeholder="Ask about this document..."
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                className="flex-1 bg-surface-container-low border border-outline-variant/50 rounded-lg px-md py-sm text-on-surface font-body-sm focus:outline-none focus:border-primary placeholder:text-on-surface-variant/40"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAskQuestion();
+                }}
+              />
+              <Button size="sm" onClick={handleAskQuestion} isLoading={isAsking}>Ask</Button>
+            </div>
+            {answer && (
+              <div className="p-md bg-surface-container-low rounded-lg border border-primary/20 text-sm space-y-sm max-h-[200px] overflow-y-auto">
+                <p className="font-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{answer}</p>
+                {sources.length > 0 && (
+                  <div className="text-[10px] text-on-surface-variant border-t border-outline-variant/10 pt-xs">
+                    <span className="font-bold">Matching Segments:</span>
+                    <ul className="list-disc list-inside space-y-[2px]">
+                      {sources.map((s, idx) => (
+                        <li key={idx} className="truncate">"{s.text}"</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

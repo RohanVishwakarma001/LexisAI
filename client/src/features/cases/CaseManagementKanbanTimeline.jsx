@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Columns, Clock, Search, Filter, Plus, FileText, User, Trash2, ArrowRight } from 'lucide-react';
+import { Layout, Columns, Clock, Search, Filter, Plus, FileText, User, Trash2, ArrowRight, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardContent } from '@/components/ui/Card';
 import api from '@/lib/axios';
 import toast from 'react-hot-toast';
+import CaseDetailsChatDrawer from './CaseDetailsChatDrawer';
 
 export default function CaseManagementKanbanTimeline() {
   const [cases, setCases] = useState([]);
@@ -17,6 +18,13 @@ export default function CaseManagementKanbanTimeline() {
   const [newCaseStatus, setNewCaseStatus] = useState('OPEN');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentView, setCurrentView] = useState('kanban'); // 'kanban' | 'table'
+  const [activeChatCase, setActiveChatCase] = useState(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const handleOpenChat = (caseData) => {
+    setActiveChatCase(caseData);
+    setIsChatOpen(true);
+  };
 
   // Fetch all cases
   const fetchCases = async () => {
@@ -173,7 +181,7 @@ export default function CaseManagementKanbanTimeline() {
             </div>
             <div className="p-md space-y-md overflow-y-auto flex-1">
               {intakeCases.map(c => (
-                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} />
+                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} onOpenChat={handleOpenChat} />
               ))}
               {intakeCases.length === 0 && <EmptyColumn />}
             </div>
@@ -187,7 +195,7 @@ export default function CaseManagementKanbanTimeline() {
             </div>
             <div className="p-md space-y-md overflow-y-auto flex-1">
               {discoveryCases.map(c => (
-                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} />
+                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} onOpenChat={handleOpenChat} />
               ))}
               {discoveryCases.length === 0 && <EmptyColumn />}
             </div>
@@ -201,7 +209,7 @@ export default function CaseManagementKanbanTimeline() {
             </div>
             <div className="p-md space-y-md overflow-y-auto flex-1">
               {trialCases.map(c => (
-                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} />
+                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} onOpenChat={handleOpenChat} />
               ))}
               {trialCases.length === 0 && <EmptyColumn />}
             </div>
@@ -215,7 +223,7 @@ export default function CaseManagementKanbanTimeline() {
             </div>
             <div className="p-md space-y-md overflow-y-auto flex-1">
               {archivedCases.map(c => (
-                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} />
+                <CaseCard key={c.id} c={c} onTransition={handleTransitionStatus} onDelete={handleDeleteCase} onOpenChat={handleOpenChat} />
               ))}
               {archivedCases.length === 0 && <EmptyColumn />}
             </div>
@@ -254,6 +262,9 @@ export default function CaseManagementKanbanTimeline() {
                   </td>
                   <td className="p-md text-right">
                     <div className="flex justify-end gap-sm">
+                      <Button size="sm" variant="outline" leftIcon={<MessageSquare size={14} />} onClick={() => handleOpenChat(c)}>
+                        Chat
+                      </Button>
                       <Button size="sm" variant="outline" leftIcon={<ArrowRight size={14} />} onClick={() => handleTransitionStatus(c.id, c.status)}>
                         Progress
                       </Button>
@@ -322,12 +333,22 @@ export default function CaseManagementKanbanTimeline() {
           </div>
         </div>
       )}
+
+      {/* Case Details & Counselor Chat Drawer */}
+      <CaseDetailsChatDrawer 
+        isOpen={isChatOpen}
+        caseData={activeChatCase}
+        onClose={() => {
+          setIsChatOpen(false);
+          setActiveChatCase(null);
+        }}
+      />
     </div>
   );
 }
 
 // Subcomponent: Kanban Case Card
-function CaseCard({ c, onTransition, onDelete }) {
+function CaseCard({ c, onTransition, onDelete, onOpenChat }) {
   return (
     <Card className="hover:border-primary/50 transition-all cursor-grab hover:shadow-lg group bg-surface-container-low">
       <CardContent className="p-md space-y-sm">
@@ -337,7 +358,7 @@ function CaseCard({ c, onTransition, onDelete }) {
           </Badge>
           <span className="text-[11px] text-on-surface-variant font-mono">#{c.id.substring(0, 5).toUpperCase()}</span>
         </div>
-        <h4 className="font-label-lg font-bold text-on-surface group-hover:text-primary transition-colors">{c.title}</h4>
+        <h4 onClick={() => onOpenChat(c)} className="font-label-lg font-bold text-on-surface group-hover:text-primary transition-colors cursor-pointer">{c.title}</h4>
         {c.description && <p className="text-[12px] text-on-surface-variant line-clamp-2 leading-relaxed">{c.description}</p>}
         
         <div className="flex items-center justify-between mt-md pt-sm border-t border-outline-variant/20">
@@ -346,6 +367,13 @@ function CaseCard({ c, onTransition, onDelete }) {
             <span>{c._count?.documents || 0} Docs</span>
           </div>
           <div className="flex gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
+            <button 
+              onClick={() => onOpenChat(c)} 
+              title="Case Counselor Chat" 
+              className="p-1 hover:bg-surface-container-high rounded text-primary"
+            >
+              <MessageSquare size={14} />
+            </button>
             <button 
               onClick={() => onTransition(c.id, c.status)} 
               title="Move to Next Stage" 

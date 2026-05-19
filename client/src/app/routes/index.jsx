@@ -26,11 +26,15 @@ const AILegalAssistant = lazy(() => import('@/features/ai-research/AILegalAssist
 const AIAnalyticsInsights = lazy(() => import('@/features/analytics/AIAnalyticsInsights'));
 const AdminPanelFirmManagement = lazy(() => import('@/features/admin/AdminPanelFirmManagement'));
 const SettingsOrganization = lazy(() => import('@/features/settings/SettingsOrganization'));
+const CalendarView = lazy(() => import('@/features/calendar/CalendarView'));
 
-// Auth Route: Redirects to /dashboard if logged in
+// Auth Route: Redirects to /dashboard or /dashboard/admin if logged in
 const AuthRoute = () => {
-  const { isAuthenticated } = useAuthStore();
-  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Outlet />;
+  const { isAuthenticated, user } = useAuthStore();
+  if (isAuthenticated) {
+    return user?.role === 'ADMIN' ? <Navigate to="/dashboard/admin" replace /> : <Navigate to="/dashboard" replace />;
+  }
+  return <Outlet />;
 };
 
 // Protected Route: Redirects to /sign-in if not logged in
@@ -64,7 +68,7 @@ export function AppRouter() {
             <Route path="/sign-in" element={<SignIn />} />
             <Route path="/create-account" element={<CreateAccount />} />
           </Route>
-
+ 
           {/* Protected Dashboard Routes */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<SharedLayout />}>
@@ -75,6 +79,7 @@ export function AppRouter() {
               <Route path="analytics" element={<AIAnalyticsInsights />} />
               <Route path="admin" element={<AdminPanelFirmManagement />} />
               <Route path="settings" element={<SettingsOrganization />} />
+              <Route path="calendar" element={<CalendarView />} />
             </Route>
           </Route>
 

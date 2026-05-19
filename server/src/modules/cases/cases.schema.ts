@@ -14,6 +14,7 @@ export const updateCaseSchema = z.object({
     title: z.string().min(3, 'Title must be at least 3 characters long').optional(),
     description: z.string().optional(),
     status: z.nativeEnum(CaseStatus).optional(),
+    lawyerId: z.string().uuid('Invalid Lawyer ID').nullable().optional(),
   }),
   params: z.object({
     id: z.string().uuid('Invalid Case ID'),

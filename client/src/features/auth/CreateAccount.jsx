@@ -28,7 +28,13 @@ export default function CreateAccount() {
     try {
       await registerAction(data);
       toast.success('Account created successfully');
-      navigate('/dashboard');
+      
+      const user = useAuthStore.getState().user;
+      if (user && user.role === 'ADMIN') {
+        navigate('/dashboard/admin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to create account');
     }

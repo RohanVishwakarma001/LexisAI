@@ -19,4 +19,12 @@ router
   .patch(validate(updateCaseSchema), casesController.updateCase)
   .delete(casesController.deleteCase);
 
+router
+  .route('/:id/messages')
+  .get(casesController.getCaseMessages);
+
+router
+  .route('/:id/export')
+  .get(casesController.exportCasePDF);
+
 export default router;

@@ -20,6 +20,12 @@ enum CaseStatus {
   ARCHIVED
 }
 
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
 model User {
   id               String   @id @default(uuid())
   email            String   @unique
@@ -31,9 +37,13 @@ model User {
   organizationName String?
   phoneNumber      String?
   
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret  String?
+
   cases     Case[]   @relation("ClientCases")
   lawyerCases Case[] @relation("LawyerCases")
   payments  Payment[]
+  messages  Message[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -55,6 +65,9 @@ model Case {
   lawyer      User?      @relation("LawyerCases", fields: [lawyerId], references: [id])
   
   documents   Document[]
+  hearings    Hearing[]
+  messages    Message[]
+  tasks       Task[]
   
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -80,12 +93,84 @@ model Document {
   
   uploadedBy  String
   
+  chunks      DocumentChunk[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
 
   @@index([caseId])
   @@map("documents")
+}
+
+model DocumentChunk {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  textContent String
+  embedding   Json     // float array
+  createdAt   DateTime @default(now())
+
+  @@index([documentId])
+  @@map("document_chunks")
+}
+
+model Hearing {
+  id        String   @id @default(uuid())
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  title     String
+  date      DateTime
+  location  String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([caseId])
+  @@map("hearings")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Task {
+  id           String     @id @default(uuid())
+  caseId       String
+  case         Case       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  assignedToId String?
+  title        String
+  description  String?
+  status       TaskStatus @default(TODO)
+  dueDate      DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([caseId])
+  @@map("tasks")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("audit_logs")
 }
 
 model Payment {

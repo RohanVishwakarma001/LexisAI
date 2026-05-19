@@ -11,7 +11,9 @@ import {
   Plus, 
   HelpCircle, 
   LogOut,
-  X
+  X,
+  Shield,
+  Calendar
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -20,14 +22,17 @@ import toast from 'react-hot-toast';
 
 export default function Sidebar({ isOpen, onClose }) {
   const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
 
   const navItems = [
     { to: "/dashboard", icon: <LayoutDashboard size={20} />, label: "Dashboard" },
     { to: "/dashboard/cases", icon: <FolderOpen size={20} />, label: "Case Files" },
+    { to: "/dashboard/calendar", icon: <Calendar size={20} />, label: "Calendar" },
     { to: "/dashboard/research", icon: <Scale size={20} />, label: "Research" },
     { to: "/dashboard/analytics", icon: <BarChart size={20} />, label: "Analytics" },
     { to: "/dashboard/documents", icon: <FileText size={20} />, label: "Documents" },
+    ...(user && user.role === 'ADMIN' ? [{ to: "/dashboard/admin", icon: <Shield size={20} />, label: "Admin Panel" }] : []),
     { to: "/dashboard/settings", icon: <Settings size={20} />, label: "Settings" },
   ];
 

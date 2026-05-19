@@ -10,7 +10,7 @@ import api from '@/lib/axios';
 import toast from 'react-hot-toast';
 
 export default function SettingsOrganization() {
-  const { user, updateProfile } = useAuthStore();
+  const { user, updateProfile, checkAuth } = useAuthStore();
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'profile' | 'notifications' | 'security' | 'billing'
   
   // Tab 1: General State
@@ -31,6 +31,11 @@ export default function SettingsOrganization() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [twoFactor, setTwoFactor] = useState(false);
+  const [is2FAModalOpen, setIs2FAModalOpen] = useState(false);
+  const [qrCodeData, setQrCodeData] = useState('');
+  const [mfaSecret, setMfaSecret] = useState('');
+  const [mfaToken, setMfaToken] = useState('');
+  const [isVerifying2FA, setIsVerifying2FA] = useState(false);
 
   // Tab 5: Billing & Razorpay State
   const [invoices, setInvoices] = useState([]);
@@ -52,6 +57,7 @@ export default function SettingsOrganization() {
       setPhone(user.phoneNumber || '+1 (555) 012-3456');
       setFirstName(user.firstName || '');
       setLastName(user.lastName || '');
+      setTwoFactor(user.twoFactorEnabled || false);
     }
   }, [user]);
 
@@ -268,6 +274,70 @@ export default function SettingsOrganization() {
       setConfirmPassword('');
       toast.success('Credentials security matrix updated!');
     }, 800);
+  };
+
+  const handleToggle2FA = async (e) => {
+    const checked = e.target.checked;
+    
+    if (checked) {
+      const loadToast = toast.loading('Initializing Multi-Factor authentication...');
+      try {
+        const res = await api.post('/auth/2fa/generate');
+        if (res.data?.status === 'success') {
+          setQrCodeData(res.data.data.qrCode);
+          setMfaSecret(res.data.data.secret);
+          setIs2FAModalOpen(true);
+        }
+      } catch (err) {
+        toast.error('Failed to initialize 2FA configuration');
+      } finally {
+        toast.dismiss(loadToast);
+      }
+    } else {
+      if (!window.confirm('Disable Multi-Factor Authentication? Your account will be less secure.')) {
+        setTwoFactor(true);
+        return;
+      }
+      const loadToast = toast.loading('Disabling Multi-Factor Authentication...');
+      try {
+        const res = await api.post('/auth/2fa/disable');
+        if (res.data?.status === 'success') {
+          setTwoFactor(false);
+          toast.success('MFA protection disabled');
+          await checkAuth();
+        }
+      } catch (err) {
+        toast.error('Failed to disable 2FA');
+      } finally {
+        toast.dismiss(loadToast);
+      }
+    }
+  };
+
+  const handleVerify2FASubmit = async (e) => {
+    e.preventDefault();
+    if (!mfaToken.trim()) {
+      toast.error('Please enter the 6-digit authenticator code');
+      return;
+    }
+    
+    setIsVerifying2FA(true);
+    const loadToast = toast.loading('Verifying code...');
+    try {
+      const res = await api.post('/auth/2fa/verify', { token: mfaToken });
+      if (res.data?.status === 'success') {
+        setTwoFactor(true);
+        setIs2FAModalOpen(false);
+        setMfaToken('');
+        toast.success('Multi-Factor Authentication enabled successfully!');
+        await checkAuth();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Invalid authenticator code. Please try again.');
+    } finally {
+      toast.dismiss(loadToast);
+      setIsVerifying2FA(false);
+    }
   };
 
   const handleLogoUploadClick = () => {
@@ -601,7 +671,7 @@ export default function SettingsOrganization() {
                     <input 
                       type="checkbox" 
                       checked={twoFactor} 
-                      onChange={(e) => setTwoFactor(e.target.checked)}
+                      onChange={handleToggle2FA}
                       className="w-5 h-5 rounded border-outline-variant/60 text-primary focus:ring-primary" 
                     />
                     <div>
@@ -842,6 +912,77 @@ export default function SettingsOrganization() {
                 Complete Payment
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2FA SETUP/VERIFICATION MODAL */}
+      {is2FAModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-xl shadow-2xl space-y-lg animate-in scale-in duration-200 text-on-surface">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-headline-md text-on-surface font-bold">Configure MFA Protection</h3>
+                <p className="text-xs text-on-surface-variant">Scan the code below with your preferred Authenticator App.</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setIs2FAModalOpen(false);
+                  setMfaToken('');
+                  setTwoFactor(false);
+                }} 
+                className="text-on-surface-variant hover:text-on-surface"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center justify-center bg-white p-md rounded-xl max-w-[200px] mx-auto border border-outline-variant/20">
+              {qrCodeData && (
+                <img src={qrCodeData} alt="MFA QR Code" className="w-full h-auto" />
+              )}
+            </div>
+
+            <div className="space-y-xs text-center">
+              <span className="text-xs font-mono bg-surface-container-low px-md py-sm rounded select-all font-semibold">
+                Setup Key: {mfaSecret}
+              </span>
+              <p className="text-[11px] text-on-surface-variant">Can't scan? Enter this secret manually in your Authenticator app.</p>
+            </div>
+
+            <form onSubmit={handleVerify2FASubmit} className="space-y-md">
+              <Input 
+                label="Enter 6-Digit Authenticator Code *" 
+                placeholder="123456" 
+                maxLength={6}
+                value={mfaToken}
+                onChange={(e) => setMfaToken(e.target.value.replace(/\D/g, ''))}
+                required
+                className="text-center font-mono tracking-widest text-lg"
+              />
+
+              <div className="flex gap-md pt-xs">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    setIs2FAModalOpen(false);
+                    setMfaToken('');
+                    setTwoFactor(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="flex-1 bg-primary text-on-primary"
+                  isLoading={isVerifying2FA}
+                >
+                  Verify & Enable
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

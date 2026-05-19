@@ -5,6 +5,8 @@ import path from 'path';
 import { uploadToCloudinary, purgeFile } from '../../utils/cloudinary';
 import { env } from '../../config/env';
 import fs from 'fs';
+import { getEmbedding, cosineSimilarity } from '../../utils/openai';
+import { queueEmail } from '../notifications/queue.service';
 
 export const getDocuments = async (userId: string, role: Role, caseId?: string) => {
   let caseFilter: any = {};
@@ -45,6 +47,10 @@ export const createDocument = async (
 ) => {
   const parentCase = await prisma.case.findUnique({
     where: { id: caseId },
+    include: {
+      client: true,
+      lawyer: true,
+    },
   });
 
   if (!parentCase || parentCase.deletedAt) {
@@ -106,7 +112,7 @@ export const createDocument = async (
     }
   }
 
-  return prisma.document.create({
+  const newDoc = await prisma.document.create({
     data: {
       fileName: file.originalname,
       fileUrl,
@@ -118,19 +124,54 @@ export const createDocument = async (
         ocrText,
         aiSummary,
         indexedAt: new Date().toISOString(),
-        status: 'INDEXED',
         publicId,
       },
     },
-    include: {
-      case: {
-        select: {
-          id: true,
-          title: true,
-        },
-      },
-    },
   });
+
+  // Generate embeddings and store chunks (Feature 3)
+  try {
+    const chunks: string[] = [];
+    const chunkSize = 200; // split into smaller sentence-sized chunks for better similarity mapping
+    for (let i = 0; i < ocrText.length; i += chunkSize) {
+      chunks.push(ocrText.substring(i, i + chunkSize));
+    }
+
+    for (const chunkText of chunks) {
+      const embedding = await getEmbedding(chunkText);
+      await prisma.documentChunk.create({
+        data: {
+          documentId: newDoc.id,
+          textContent: chunkText,
+          embedding: embedding as any,
+        },
+      });
+    }
+  } catch (chunkError) {
+    console.error('Failed to generate document chunks/embeddings:', chunkError);
+  }
+
+  // Queue Email Notifications (Feature 1)
+  try {
+    if (parentCase.client && parentCase.client.id !== userId) {
+      await queueEmail(
+        parentCase.client.email,
+        'New Document Uploaded',
+        `<h1>New Document Uploaded</h1><p>A new file <strong>${file.originalname}</strong> has been uploaded to Case: <strong>${parentCase.title}</strong> by the system.</p>`
+      );
+    }
+    if (parentCase.lawyer && parentCase.lawyer.id !== userId) {
+      await queueEmail(
+        parentCase.lawyer.email,
+        'New Document Uploaded',
+        `<h1>New Document Uploaded</h1><p>A new file <strong>${file.originalname}</strong> has been uploaded to Case: <strong>${parentCase.title}</strong>.</p>`
+      );
+    }
+  } catch (emailErr) {
+    console.error('Failed to queue upload notifications:', emailErr);
+  }
+
+  return newDoc;
 };
 
 export const deleteDocument = async (documentId: string, userId: string, role: Role) => {
@@ -161,4 +202,96 @@ export const deleteDocument = async (documentId: string, userId: string, role: R
   return prisma.document.delete({
     where: { id: documentId },
   });
+};
+
+export const documentQA = async (documentId: string, question: string) => {
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: {
+      chunks: true,
+    },
+  });
+
+  if (!document) {
+    throw new AppError('Document not found', 404);
+  }
+
+  if (!document.chunks || document.chunks.length === 0) {
+    return {
+      answer: 'No text chunks indexed for this document yet. Try uploading a PDF, TXT or image.',
+      sourceChunks: [],
+    };
+  }
+
+  // 1. Get embedding for the question
+  const questionEmbedding = await getEmbedding(question);
+
+  // 2. Perform Cosine Similarity ranking in memory
+  const scoredChunks = document.chunks.map((chunk) => {
+    const chunkVector = chunk.embedding as unknown as number[];
+    const similarity = cosineSimilarity(questionEmbedding, chunkVector || []);
+    return {
+      ...chunk,
+      similarity,
+    };
+  });
+
+  // Sort descending by similarity score
+  scoredChunks.sort((a, b) => b.similarity - a.similarity);
+
+  // Select top 3 matching chunks
+  const topChunks = scoredChunks.slice(0, 3);
+  
+  // 3. Construct Context for OpenAI LLM Q&A completion
+  const contextText = topChunks.map((c) => c.textContent).join('\n---\n');
+
+  // Query OpenAI chat completions API
+  const apiKey = env.OPENAI_API_KEY;
+  const isDummyKey = !apiKey || apiKey.startsWith('sk-proj-your') || apiKey.includes('sk-proj-xnPzMr');
+
+  let answerText = '';
+
+  if (apiKey && !isDummyKey) {
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert Indian legal assistant. Answer the user's question about the provided legal document context. Be precise and ground your answer strictly in the provided document source text. If the answer is not mentioned, say 'I cannot find that in the document'.\n\n[DOCUMENT CONTENT]\n${contextText}`,
+            },
+            { role: 'user', content: question },
+          ],
+          temperature: 0.2,
+          max_tokens: 800,
+        }),
+      });
+
+      if (response.ok) {
+        const payload = await response.json();
+        answerText = payload.choices?.[0]?.message?.content || '';
+      } else {
+        const errText = await response.text();
+        console.error(`LLM QA completion failed: ${errText}`);
+      }
+    } catch (llmError) {
+      console.error('LLM QA call error:', llmError);
+    }
+  }
+
+  // Sandbox fallback
+  if (!answerText) {
+    answerText = `[Sandbox Mode Fallback Response]\nBased on the closest matched text segments: "${topChunks[0]?.textContent || ''}", it appears the document outlines specific terms or claims matching: "${question}". (Configuring a live OpenAI API key will provide high-fidelity answers).`;
+  }
+
+  return {
+    answer: answerText,
+    sourceChunks: topChunks.map((c) => ({ text: c.textContent, score: c.similarity })),
+  };
 };

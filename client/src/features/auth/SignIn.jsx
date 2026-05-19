@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm as useReactHookForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Gavel, Mail, Lock, Loader2 } from 'lucide-react';
+import { Gavel, Mail, Lock, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/useAuthStore';
+import api from '@/lib/axios';
 import toast from 'react-hot-toast';
 
 const signInSchema = z.object({
@@ -16,7 +17,10 @@ const signInSchema = z.object({
 
 export default function SignIn() {
   const navigate = useNavigate();
-  const login = useAuthStore((state) => state.login);
+  const [show2FA, setShow2FA] = useState(false);
+  const [mfaUserId, setMfaUserId] = useState('');
+  const [mfaToken, setMfaToken] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
   
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useReactHookForm({
     resolver: zodResolver(signInSchema),
@@ -24,11 +28,69 @@ export default function SignIn() {
 
   const onSubmit = async (data) => {
     try {
-      await login(data);
-      toast.success('Successfully logged in');
-      navigate('/dashboard');
+      const response = await api.post('/auth/login', data);
+      
+      if (response.data?.status === '2fa_required') {
+        setMfaUserId(response.data.data.userId);
+        setShow2FA(true);
+        toast.success('MFA Verification required');
+        return;
+      }
+
+      if (response.data?.status === 'success' && response.data?.data?.user) {
+        useAuthStore.setState({
+          user: response.data.data.user,
+          isAuthenticated: true,
+        });
+        toast.success('Successfully logged in');
+        
+        const user = response.data.data.user;
+        if (user.role === 'ADMIN') {
+          navigate('/dashboard/admin');
+        } else {
+          navigate('/dashboard');
+        }
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Invalid credentials');
+    }
+  };
+
+  const handleVerify2FALogin = async (e) => {
+    e.preventDefault();
+    if (!mfaToken.trim()) {
+      toast.error('Please enter the 6-digit verification code');
+      return;
+    }
+    
+    setIsVerifying(true);
+    const loadToast = toast.loading('Verifying MFA token...');
+    try {
+      const response = await api.post('/auth/login/2fa', {
+        userId: mfaUserId,
+        token: mfaToken,
+      });
+      
+      if (response.data?.status === 'success' && response.data?.data?.user) {
+        useAuthStore.setState({
+          user: response.data.data.user,
+          isAuthenticated: true,
+        });
+        toast.dismiss(loadToast);
+        toast.success('Successfully authenticated with MFA!');
+        
+        const user = response.data.data.user;
+        if (user.role === 'ADMIN') {
+          navigate('/dashboard/admin');
+        } else {
+          navigate('/dashboard');
+        }
+      }
+    } catch (error) {
+      toast.dismiss(loadToast);
+      toast.error(error.response?.data?.message || 'Invalid verification code. Please try again.');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -65,56 +127,104 @@ export default function SignIn() {
       {/* Right Section */}
       <section className="flex-1 flex flex-col justify-center items-center p-lg md:p-xl bg-background relative">
         <div className="w-full max-w-[420px] bg-surface-container-lowest p-xl rounded-xl shadow-2xl border border-outline-variant/30">
-          <div className="mb-xl text-center md:text-left">
-            <h2 className="font-headline-lg mb-xs">Sign In</h2>
-            <p className="font-body-md text-on-surface-variant">Enter your credentials to access your secure vault.</p>
-          </div>
-
-          <form className="space-y-lg" onSubmit={handleSubmit(onSubmit)}>
-            <Input 
-              label="Professional Email"
-              id="email"
-              type="email"
-              placeholder="name@firm.com"
-              leftIcon={<Mail size={20} />}
-              error={errors.email?.message}
-              {...register('email')}
-            />
-            
-            <Input 
-              label="Password"
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              leftIcon={<Lock size={20} />}
-              error={errors.password?.message}
-              {...register('password')}
-            />
-            
-            <div className="flex items-center justify-between ml-xs">
-              <div className="flex items-center gap-md">
-                <input className="w-4 h-4 rounded border-outline-variant bg-surface-container-low text-primary focus:ring-primary/40" id="remember" type="checkbox" />
-                <label className="font-body-md text-on-surface-variant" htmlFor="remember">Remember me</label>
+          {!show2FA ? (
+            <>
+              <div className="mb-xl text-center md:text-left">
+                <h2 className="font-headline-lg mb-xs">Sign In</h2>
+                <p className="font-body-md text-on-surface-variant">Enter your credentials to access your secure vault.</p>
               </div>
-              <Link className="font-label-md text-primary hover:text-primary-fixed transition-colors" to="/forgot-password">Forgot Password?</Link>
-            </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full mt-lg"
-              size="lg"
-              isLoading={isSubmitting}
-            >
-              Sign In
-            </Button>
-          </form>
 
-          <div className="mt-xl text-center">
-            <p className="font-body-md text-on-surface-variant">
-              Don't have an account?{' '}
-              <Link className="text-primary font-bold hover:underline decoration-primary/30 underline-offset-4" to="/create-account">Sign up</Link>
-            </p>
-          </div>
+              <form className="space-y-lg" onSubmit={handleSubmit(onSubmit)}>
+                <Input 
+                  label="Professional Email"
+                  id="email"
+                  type="email"
+                  placeholder="name@firm.com"
+                  leftIcon={<Mail size={20} />}
+                  error={errors.email?.message}
+                  {...register('email')}
+                />
+                
+                <Input 
+                  label="Password"
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  leftIcon={<Lock size={20} />}
+                  error={errors.password?.message}
+                  {...register('password')}
+                />
+                
+                <div className="flex items-center justify-between ml-xs">
+                  <div className="flex items-center gap-md">
+                    <input className="w-4 h-4 rounded border-outline-variant bg-surface-container-low text-primary focus:ring-primary/40" id="remember" type="checkbox" />
+                    <label className="font-body-md text-on-surface-variant" htmlFor="remember">Remember me</label>
+                  </div>
+                  <Link className="font-label-md text-primary hover:text-primary-fixed transition-colors" to="/forgot-password">Forgot Password?</Link>
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  className="w-full mt-lg"
+                  size="lg"
+                  isLoading={isSubmitting}
+                >
+                  Sign In
+                </Button>
+              </form>
+
+              <div className="mt-xl text-center">
+                <p className="font-body-md text-on-surface-variant">
+                  Don't have an account?{' '}
+                  <Link className="text-primary font-bold hover:underline decoration-primary/30 underline-offset-4" to="/create-account">Sign up</Link>
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mb-xl text-center md:text-left">
+                <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center text-primary mb-md mx-auto md:mx-0">
+                  <ShieldCheck size={28} />
+                </div>
+                <h2 className="font-headline-lg mb-xs">MFA Verification</h2>
+                <p className="font-body-md text-on-surface-variant">Your account is protected by multi-factor authentication. Enter your 6-digit authenticator code below.</p>
+              </div>
+
+              <form className="space-y-lg" onSubmit={handleVerify2FALogin}>
+                <Input 
+                  label="Authenticator Code"
+                  id="token"
+                  placeholder="123456"
+                  maxLength={6}
+                  value={mfaToken}
+                  onChange={(e) => setMfaToken(e.target.value.replace(/\D/g, ''))}
+                  required
+                  className="text-center font-mono tracking-widest text-lg"
+                />
+                
+                <Button 
+                  type="submit" 
+                  className="w-full mt-lg"
+                  size="lg"
+                  isLoading={isVerifying}
+                >
+                  Verify Code
+                </Button>
+
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => {
+                    setShow2FA(false);
+                    setMfaToken('');
+                  }}
+                >
+                  Back to Sign In
+                </Button>
+              </form>
+            </>
+          )}
         </div>
       </section>
     </main>

@@ -3,7 +3,7 @@ import * as documentsController from './documents.controller';
 import { protect } from '../../middleware/auth.middleware';
 import { upload } from './multer.config';
 import { validate } from '../../middleware/validate.middleware';
-import { queryDocumentSchema } from './documents.schema';
+import { queryDocumentSchema, documentQASchema } from './documents.schema';
 
 const router = Router();
 
@@ -18,5 +18,9 @@ router
 router
   .route('/:id')
   .delete(documentsController.deleteDocument);
+
+router
+  .route('/:id/qa')
+  .post(validate(documentQASchema), documentsController.documentQA);
 
 export default router;

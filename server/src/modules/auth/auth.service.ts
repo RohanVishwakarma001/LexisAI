@@ -3,6 +3,7 @@ import prisma from '../../database';
 import { AppError } from '../../utils/AppError';
 import { RegisterInput, LoginInput } from './auth.schema';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt';
+import { queueEmail } from '../notifications/queue.service';
 
 export const registerUser = async (input: RegisterInput) => {
   const existingUser = await prisma.user.findUnique({
@@ -23,6 +24,19 @@ export const registerUser = async (input: RegisterInput) => {
       lastName: input.lastName,
     },
   });
+
+  // Send Welcome Email
+  try {
+    await queueEmail(
+      user.email,
+      'Welcome to LexisAI',
+      `<h1>Welcome to LexisAI, ${user.firstName || 'User'}!</h1>
+       <p>Your legal workspace has been successfully initialized under Indian law context frameworks.</p>
+       <p>Log in to configure your case workflows and document vaults.</p>`
+    );
+  } catch (emailErr) {
+    console.error('Welcome email failed to queue:', emailErr);
+  }
 
   const accessToken = signAccessToken(user.id, user.role);
   const refreshToken = signRefreshToken(user.id);
@@ -84,3 +98,48 @@ export const updateUserProfile = async (
     data,
   });
 };
+
+export const getAllUsers = async () => {
+  return prisma.user.findMany({
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      avatar: true,
+      organizationName: true,
+      phoneNumber: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+};
+
+export const updateUserRole = async (userId: string, role: string) => {
+  const validRoles = ['USER', 'LAWYER', 'ADMIN'];
+  if (!validRoles.includes(role)) {
+    throw new AppError('Invalid role', 400);
+  }
+
+  return prisma.user.update({
+    where: { id: userId },
+    data: { role: role as any },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+    },
+  });
+};
+
+export const deleteUser = async (userId: string) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { deletedAt: new Date() },
+  });
+};
+

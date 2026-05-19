@@ -13,6 +13,9 @@ import documentRoutes from './modules/documents/documents.routes';
 import aiRoutes from './modules/ai/ai.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import paymentsRoutes from './modules/payments/payments.routes';
+import hearingRoutes from './modules/hearings/hearings.routes';
+import auditRoutes from './modules/audit/audit.routes';
+import tasksRoutes from './modules/tasks/tasks.routes';
 
 const app: Application = express();
 
@@ -61,6 +64,9 @@ app.use('/api/v1/documents', documentRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/payments', paymentsRoutes);
+app.use('/api/v1/hearings', hearingRoutes);
+app.use('/api/v1/audit', auditRoutes);
+app.use('/api/v1/tasks', tasksRoutes);
 
 // Error Handling
 app.use(notFoundHandler);
