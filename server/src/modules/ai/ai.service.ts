@@ -123,32 +123,33 @@ ${caseContext}Based on computational legal analysis scanning the pleadings, depo
 3.  **Signature Validity**: Mutual assent verified. Both digital signatures match valid organizational signing certificates.
 
 #### III. RECOMMENDED ACTION & LITIGATION STRATEGY
--   **File for Partial Summary Judgment**: File for a Partial Summary Judgment on Contract Liability under **UCC Section 2-714** immediately to narrow issues before pre-trial.
+-   **File for Damages under Indian Contract Act**: File a suit for recovery and damages under **Section 73 of the Indian Contract Act, 1872** immediately in the Commercial Court.
 -   **Initiate Mitigation Log Audit**: Demand opposing side's internal work records to establish lack of damage mitigation.
 
-*Draft prepared by LexisAI Co-Counsel. Review with senior firm partners before applying.*`;
+*Draft prepared by LexisAI Co-Counsel. Review with senior advocate partners before applying.*`;
 
-const generateSuppressionMotion = (caseId?: string): string => `### 📝 MOTION TO SUPPRESS EVIDENCE (PREVIEW DRAFT)
+const generateSuppressionMotion = (caseId?: string): string => `### 📝 WRIT PETITION / MOTION TO EXCLUDE EVIDENCE (PREVIEW DRAFT)
 
-**IN THE DISTRICT COURT OF THE STATE OF DELAWARE**
+**IN THE HIGH COURT OF JUDICATURE AT BOMBAY**
+*(Under Article 226 of the Constitution of India)*
 
 *Doe v. TechCorp | Case File Reference: #C-${(caseId || '884').substring(0, 4)}*
 
 ---
 
 #### I. RELIEF SOUGHT
-Plaintiff hereby moves this Court for an Order suppressing all digital logs and databases seized from Plaintiff's servers on April 12, 2026, on the grounds that the warrant was overly broad, violated the particularity requirement, and was executed in violation of the Fourth Amendment.
+The Petitioner hereby moves this Hon'ble Court for an Order suppressing and excluding all digital logs and databases seized from the Petitioner's servers on April 12, 2026, on the grounds that the search and seizure was overly broad, lacked a valid warrant or proper authorization under the Information Technology Act, 2000, and directly violated the fundamental Right to Privacy under Article 21 of the Constitution of India.
 
 #### II. LEGAL BASIS & STATUTORY ARGUMENT
-1.  **Lack of Particularity**: The warrant authorized the seizure of "any and all files," failing to specify search criteria or date boundaries, constituting an unconstitutional "general warrant."
-2.  **Pre-Condition Failure**: Under *United States v. Grubbs*, 547 U.S. 90 (2006), an anticipatory warrant must satisfy strict pre-conditions. Here, TechCorp representatives failed to execute the required precinct logs before initiating the data download, negating the probable cause trigger.
-3.  **Fruit of the Poisonous Tree**: Any subsequent files extracted from the initial unlawful seizure are tainted under *Wong Sun v. United States*, 371 U.S. 471 (1963).
+1.  **Violation of Article 21 (Right to Privacy)**: Under the landmark ruling in *K.S. Puttaswamy v. Union of India (2017) 10 SCC 1*, the Right to Privacy is protected as an intrinsic part of the right to life and personal liberty under Article 21. The sweeping search of the Petitioner's entire network without specific judicial oversight constitutes an unreasonable and unconstitutional invasion of privacy.
+2.  **Failure to Adhere to Section 80 of the IT Act, 2000**: Any search and seizure of digital devices must adhere strictly to the procedural safeguards of the Information Technology Act, 2000. Here, the seizing officers failed to record the necessary grounds of belief or obtain the required authorization from a first-class magistrate, rendering the entire seizure ultra vires.
+3.  **Admissibility under Section 65B of the Indian Evidence Act / Section 63 of BSA**: The digital evidence was gathered without the mandatory certification required under Section 65B(4) of the Indian Evidence Act, 1872 (now Section 63 of the Bharatiya Sakshya Adhiniyam, 2023), rendering it legally inadmissible as secondary electronic evidence under *Anvar P.V. v. P.K. Basheer (2014) 10 SCC 473*.
 
 #### III. CONCLUSION
-Plaintiff respectfully requests that this Court grant this Motion and order the exclusion of all evidence seized.
+The Petitioner respectfully requests that this Hon'ble Court issue a Writ of Mandamus or any other appropriate writ directing the respondents to exclude the unlawfully seized digital evidence from the record.
 
 ---
-*Draft prepared by LexisAI Co-Counsel. Review with senior firm partners before applying.*`;
+*Draft prepared by LexisAI Co-Counsel. Review with senior advocate partners before applying.*`;
 
 const generatePrecedentsBrief = (): string => `### ⚖️ Precedent Check & Judicial Citations
 
@@ -157,31 +158,31 @@ Based on your matter structure, the following Tier-1 judicial precedents govern 
 ---
 
 #### I. CONTRACT MUTUALITY & DIGITAL ASSENT
-*   **Specht v. Netscape Communications Corp (2002)**: Establishes mutual assent standards for click-wrap and browse-wrap agreements. Seeks visible, conspicuous notice of terms.
-*   **Carlill v. Carbolic Smoke Ball Co [1892] EWCA**: Landmark English contract law decision establishing the standard requirements for unilateral contract offers and binding commercial agreements.
+*   **Trimex International FZE v. Vedanta Aluminium Ltd. (2010) 3 SCC 1**: Establishes that a contract can be concluded through exchange of emails/digital messages, even if no formal agreement is signed, provided there is clear mutual assent on essential terms.
+*   **Bhagwandas Goverdhandas Kedia v. Girdharilal Parshottamdas & Co. (1966) AIR SC 543**: Explains the rules regarding the completion of contracts over telephonic and digital communication.
 
 #### II. DAMAGES REMOTENESS & BREACH PENALTIES
-*   **Hadley v. Baxendale (1854) 9 Exch 341**: Dictates limits, foreseeability, and remoteness of consequential damages in breach of vendor contracts. Damages must be such as may reasonably be supposed to have been in the contemplation of both parties at the time they made the contract.
-*   **UCC Section 2-714**: Dictates standard formula for buyer's damages for breach in regard to accepted goods.
+*   **Hadley v. Baxendale (1854) 9 Exch 341**: Followed in India under Section 73 of the Indian Contract Act, 1872, limiting damages to those arising naturally from the breach or contemplated by the parties.
+*   **Murlidhar Chiranjilal v. Harishchandra Dwarkadas (1962) 1 SCR 653**: Outlines the standard rules for assessing market-rate damages for breach of contract in India.
 
 ---
 *Query search completed across 4 internal firm directories.*`;
 
-const generatePrivacyComplianceBrief = (message: string): string => `### 🔒 Global Privacy & Compliance Advisory Brief
+const generatePrivacyComplianceBrief = (message: string): string => `### 🔒 Digital Personal Data Protection (DPDP) Act Compliance Brief
 
 Regarding your inquiry: **"${message}"**
 
-Cross-border data regulations and enterprise consumer privacy acts impose strict liability. Here is the legal matrix:
+Cross-border data regulations and Indian data privacy frameworks impose strict compliance obligations on data fiduciaries. Here is the legal matrix:
 
 ---
 
 #### I. STATUTORY APPLICABILITY
--   **GDPR (EU)**: Articles 44–49 restrict transfer of personal data outside the EU unless an adequacy decision or standard contractual clauses (SCCs) are active.
--   **CCPA/CPRA (California)**: Strict rules regarding consumer's right to opt-out of data sales, right to correct, and mandatory private right of action for data breaches.
+-   **DPDP Act, 2023 (India)**: Governs the processing of digital personal data. Under Section 6, consent must be free, specific, informed, unconditional, and unambiguous, accompanied by a clear notice. Section 16 restricts cross-border transfers to territories blacklisted by the Central Government.
+-   **IT Act, 2000 & SPDI Rules, 2011**: Regulates the collection and transfer of Sensitive Personal Data or Information (SPDI), requiring a clear privacy policy and reasonable security practices.
 
 #### II. DEFICIENCIES & ACTION ITEMS
-1.  **DPA Check**: Review the Data Processing Agreement (DPA) between the client and technical vendors.
-2.  **Consent Flow**: Conspicuously display terms of service. Avoid pre-checked check-boxes for data collection.
+1.  **Consent Manager Integration**: Implement a consent manager interface complying with the DPDP Act guidelines to allow users to withdraw consent seamlessly.
+2.  **Data Fiduciary Audit**: Conduct an audit of third-party vendors processing data to ensure they maintain the necessary security safeguards under Section 8 of the DPDP Act.
 
 *Compliance checklist active. LexisAI corporate governance tool.*`;
 
@@ -228,7 +229,7 @@ const SANDBOX_RULES: SandboxRule[] = [
     generator: () => generatePrecedentsBrief()
   },
   {
-    keys: ['privacy', 'data', 'gdpr', 'ccpa'],
+    keys: ['privacy', 'data', 'gdpr', 'ccpa', 'dpdp'],
     generator: (msg) => generatePrivacyComplianceBrief(msg)
   }
 ];
@@ -286,10 +287,10 @@ export const queryAi = async (userId: string, input: AskAiInput): Promise<AiQuer
       logger.info(`Live Mode active. Querying OpenAI API endpoint [${apiEndpoint}] utilizing model [${modelName}]...`);
 
       const systemPrompt = `
-You are LexisAI, an elite, citation-backed Legal Co-Counsel AI. You are a senior appellate attorney. 
-Deliver extremely professional, authoritative, and direct advice.
+You are LexisAI, an elite, citation-backed Legal Co-Counsel AI specializing in Indian law and the Indian Constitution. You are a senior advocate and appellate attorney. 
+Deliver extremely professional, authoritative, and direct advice under the framework of Indian legal jurisprudence.
 Format your output using clear markdown with hierarchical headings (starting with "### " for major topics and "#### " for subsections), bullet points, and bold text. 
-Always cite specific case precedents, constitutional articles, or statutes where applicable.
+Always cite specific Indian Supreme Court/High Court case precedents, articles of the Constitution of India, or sections of Indian statutes (e.g., Bharatiya Nyaya Sanhita/IPC, Bharatiya Nagarik Suraksha Sanhita/CrPC, Bharatiya Sakshya Adhiniyam/IEA, Indian Contract Act, etc.) where applicable.
 `;
 
       const promptPayload = `
