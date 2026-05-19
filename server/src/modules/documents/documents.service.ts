@@ -3,6 +3,8 @@ import { Role } from '@prisma/client';
 import { AppError } from '../../utils/AppError';
 import path from 'path';
 import { uploadToCloudinary, purgeFile } from '../../utils/cloudinary';
+import { env } from '../../config/env';
+import fs from 'fs';
 
 export const getDocuments = async (userId: string, role: Role, caseId?: string) => {
   let caseFilter: any = {};
@@ -74,14 +76,34 @@ export const createDocument = async (
   // Attempt Cloudinary ingestion with a graceful local disk fallback if credentials aren't present
   let fileUrl = `/uploads/${file.filename}`;
   let publicId: string | undefined = undefined;
-  try {
-    const cloudUpload = await uploadToCloudinary(file.path);
-    if (cloudUpload) {
-      fileUrl = cloudUpload.secure_url;
-      publicId = cloudUpload.public_id;
+
+  const isCloudinaryConfigured = !!(
+    env.CLOUDINARY_CLOUD_NAME &&
+    env.CLOUDINARY_API_KEY &&
+    env.CLOUDINARY_API_SECRET
+  );
+
+  if (isCloudinaryConfigured) {
+    try {
+      const cloudUpload = await uploadToCloudinary(file.path);
+      if (cloudUpload) {
+        fileUrl = cloudUpload.secure_url;
+        publicId = cloudUpload.public_id;
+      } else {
+        throw new AppError('Cloudinary upload returned empty payload', 500);
+      }
+    } catch (cloudinaryError: any) {
+      console.error('❌ Cloudinary cloud media storage upload failed:', cloudinaryError);
+      // Ensure local file is cleaned up if it wasn't already deleted
+      try {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      } catch (unlinkError) {
+        console.error('Failed to unlink local temporary multer file after failed upload:', unlinkError);
+      }
+      throw new AppError(`Failed to upload file to cloud storage: ${cloudinaryError.message || cloudinaryError}`, 500);
     }
-  } catch (cloudinaryError) {
-    console.error('❌ Cloudinary cloud media storage upload failed:', cloudinaryError);
   }
 
   return prisma.document.create({
