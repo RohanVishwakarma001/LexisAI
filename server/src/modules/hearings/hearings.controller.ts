@@ -4,11 +4,14 @@ import { asyncHandler } from '../../utils/asyncHandler';
 
 export const getHearings = asyncHandler(async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const hearings = await hearingService.getHearings(user.id, user.role);
+  const page = parseInt(req.query.page as string || '1', 10);
+  const limit = parseInt(req.query.limit as string || '10', 10);
+
+  const paginatedResult = await hearingService.getHearings(user.id, user.role, page, limit);
 
   res.status(200).json({
     status: 'success',
-    data: { hearings },
+    data: paginatedResult,
   });
 });
 

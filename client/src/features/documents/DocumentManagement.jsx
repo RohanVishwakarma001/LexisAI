@@ -7,6 +7,18 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Badge } from '@/components/ui/Badge';
 import api from '@/lib/axios';
 import toast from 'react-hot-toast';
+const INDIAN_LANGUAGES = [
+  { code: 'en-IN', name: 'English (India)' },
+  { code: 'hi-IN', name: 'हिन्दी (Hindi)' },
+  { code: 'ta-IN', name: 'தமிழ் (Tamil)' },
+  { code: 'te-IN', name: 'తెలుగు (Telugu)' },
+  { code: 'bn-IN', name: 'বাংলা (Bengali)' },
+  { code: 'mr-IN', name: 'मराठी (Marathi)' },
+  { code: 'kn-IN', name: 'ಕನ್ನಡ (Kannada)' },
+  { code: 'gu-IN', name: 'ગુજરાતી (Gujarati)' },
+  { code: 'ml-IN', name: 'മലയാളം (Malayalam)' },
+  { code: 'pa-IN', name: 'ਪੰਜਾਬੀ (Punjabi)' }
+];
 
 export default function DocumentManagement() {
   const [documents, setDocuments] = useState([]);
@@ -22,28 +34,51 @@ export default function DocumentManagement() {
   const [activeDoc, setActiveDoc] = useState(null);
 
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [sources, setSources] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
   const [isAsking, setIsAsking] = useState(false);
+  const [drawerTab, setDrawerTab] = useState('insights');
+  const [qaLanguage, setQaLanguage] = useState('en-IN');
 
   useEffect(() => {
     setQuestion('');
-    setAnswer('');
-    setSources([]);
+    setChatHistory([]);
+    setDrawerTab('insights');
   }, [activeDoc]);
 
   const handleAskQuestion = async () => {
     if (!question.trim()) return;
+    const currentQuestion = question.trim();
+    setQuestion('');
+
+    const userMsg = { role: 'user', content: currentQuestion };
+    setChatHistory((prev) => [...prev, userMsg]);
     setIsAsking(true);
+
     try {
-      const response = await api.post(`/documents/${activeDoc.id}/qa`, { question });
+      const response = await api.post(`/documents/${activeDoc.id}/qa`, {
+        question: currentQuestion,
+        history: chatHistory.map((h) => ({ role: h.role, content: h.content })),
+        language: qaLanguage,
+      });
       if (response.data?.status === 'success') {
-        setAnswer(response.data.data.answer);
-        setSources(response.data.data.sourceChunks || []);
+        const aiMsg = {
+          role: 'assistant',
+          content: response.data.data.answer,
+          sources: response.data.data.sourceChunks || [],
+        };
+        setChatHistory((prev) => [...prev, aiMsg]);
       }
     } catch (err) {
       console.error('Q&A failed:', err);
       toast.error('Failed to get answer from AI');
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: '⚠️ Connection failed. Failed to request co-counsel analysis on this document.',
+          sources: [],
+        },
+      ]);
     } finally {
       setIsAsking(false);
     }
@@ -54,15 +89,17 @@ export default function DocumentManagement() {
     setIsLoading(true);
     try {
       const docsResponse = await api.get('/documents');
-      const casesResponse = await api.get('/cases');
+      const casesResponse = await api.get('/cases?limit=1000');
       
       if (docsResponse.data?.status === 'success') {
-        setDocuments(docsResponse.data.data.documents);
+        const docsData = docsResponse.data.data.documents || docsResponse.data.data.data || [];
+        setDocuments(docsData);
       }
       if (casesResponse.data?.status === 'success') {
-        setCases(casesResponse.data.data.cases);
-        if (casesResponse.data.data.cases.length > 0) {
-          setSelectedCaseId(casesResponse.data.data.cases[0].id);
+        const casesData = casesResponse.data.data.cases || casesResponse.data.data.data || [];
+        setCases(casesData);
+        if (casesData.length > 0) {
+          setSelectedCaseId(casesData[0].id);
         }
       }
     } catch (error) {
@@ -213,8 +250,19 @@ export default function DocumentManagement() {
         {/* Files list */}
         <Card className="bg-surface-container-low overflow-hidden">
           {isLoading ? (
-            <div className="p-xl text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary mx-auto"></div>
+            <div className="p-md space-y-md animate-pulse">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center justify-between py-md border-b border-outline-variant/10">
+                  <div className="flex items-center gap-md w-1/3">
+                    <div className="w-8 h-8 bg-surface-container-highest rounded shrink-0" />
+                    <div className="h-4 w-3/4 bg-surface-container-highest rounded" />
+                  </div>
+                  <div className="h-4 w-1/6 bg-surface-container-highest rounded" />
+                  <div className="h-4 w-1/12 bg-surface-container-highest rounded" />
+                  <div className="h-4 w-1/12 bg-surface-container-highest rounded" />
+                  <div className="h-5 w-16 bg-surface-container-highest rounded-full" />
+                </div>
+              ))}
             </div>
           ) : (
             <Table>
@@ -290,11 +338,11 @@ export default function DocumentManagement() {
 
       {/* Side-Drawer Panel: AI OCR and Summaries */}
       {activeDoc && (
-        <div className="w-full lg:w-[360px] bg-surface-container-high/90 backdrop-blur-md rounded-xl border border-outline-variant/30 p-lg shadow-xl shrink-0 space-y-lg animate-in slide-in-from-right duration-300">
+        <div className="w-full lg:w-[450px] bg-surface-container-high/90 backdrop-blur-md rounded-xl border border-outline-variant/30 p-lg shadow-xl shrink-0 space-y-lg animate-in slide-in-from-right duration-300">
           <div className="flex justify-between items-center border-b border-outline-variant/30 pb-md">
             <h3 className="font-headline-md text-on-surface flex items-center gap-xs">
               <Sparkles className="text-secondary shrink-0" size={18} />
-              AI Intelligence
+              AI Intelligence & Viewer
             </h3>
             <button 
               onClick={() => setActiveDoc(null)} 
@@ -318,56 +366,165 @@ export default function DocumentManagement() {
             </p>
           </div>
 
-          {/* AI Summary Block */}
-          <div className="space-y-xs">
-            <h4 className="font-label-md text-secondary uppercase tracking-widest text-[10px]">AI Executive Summary</h4>
-            <div className="p-md bg-surface-container-low rounded-lg border border-secondary/10">
-              <p className="font-body-md text-on-surface leading-relaxed">
-                {activeDoc.metadata?.aiSummary || 'AI Summary parsing is complete.'}
-              </p>
-            </div>
+          {/* Drawer Tabs */}
+          <div className="flex border-b border-outline-variant/30 gap-xs">
+            <button
+              onClick={() => setDrawerTab('insights')}
+              className={`flex-1 pb-sm font-label-md text-center border-b-2 text-[12px] transition-all font-semibold ${
+                drawerTab === 'insights'
+                  ? 'border-primary text-primary font-bold'
+                  : 'border-transparent text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              AI Insights
+            </button>
+            <button
+              onClick={() => setDrawerTab('preview')}
+              className={`flex-1 pb-sm font-label-md text-center border-b-2 text-[12px] transition-all font-semibold ${
+                drawerTab === 'preview'
+                  ? 'border-primary text-primary font-bold'
+                  : 'border-transparent text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              Document Preview
+            </button>
           </div>
 
-          {/* OCR text block */}
-          <div className="space-y-xs">
-            <h4 className="font-label-md text-primary uppercase tracking-widest text-[10px]">OCR Text Index Preview</h4>
-            <div className="p-md bg-surface-container-low rounded-lg border border-primary/10 max-h-[120px] overflow-y-auto font-mono text-[11px] text-on-surface-variant leading-relaxed">
-              {activeDoc.metadata?.ocrText || 'No OCR transcript available.'}
-            </div>
-          </div>
-
-          {/* RAG Q&A Block */}
-          <div className="space-y-xs border-t border-outline-variant/30 pt-md">
-            <h4 className="font-label-md text-primary uppercase tracking-widest text-[10px]">Document Q&A (RAG Assistant)</h4>
-            <div className="flex gap-xs">
-              <input
-                type="text"
-                placeholder="Ask about this document..."
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                className="flex-1 bg-surface-container-low border border-outline-variant/50 rounded-lg px-md py-sm text-on-surface font-body-sm focus:outline-none focus:border-primary placeholder:text-on-surface-variant/40"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAskQuestion();
-                }}
-              />
-              <Button size="sm" onClick={handleAskQuestion} isLoading={isAsking}>Ask</Button>
-            </div>
-            {answer && (
-              <div className="p-md bg-surface-container-low rounded-lg border border-primary/20 text-sm space-y-sm max-h-[200px] overflow-y-auto">
-                <p className="font-body-md text-on-surface leading-relaxed whitespace-pre-wrap">{answer}</p>
-                {sources.length > 0 && (
-                  <div className="text-[10px] text-on-surface-variant border-t border-outline-variant/10 pt-xs">
-                    <span className="font-bold">Matching Segments:</span>
-                    <ul className="list-disc list-inside space-y-[2px]">
-                      {sources.map((s, idx) => (
-                        <li key={idx} className="truncate">"{s.text}"</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+          {drawerTab === 'insights' ? (
+            <div className="space-y-lg animate-in fade-in duration-200">
+              {/* AI Summary Block */}
+              <div className="space-y-xs">
+                <h4 className="font-label-md text-secondary uppercase tracking-widest text-[10px]">AI Executive Summary</h4>
+                <div className="p-md bg-surface-container-low rounded-lg border border-secondary/10">
+                  <p className="font-body-md text-on-surface leading-relaxed text-[13px]">
+                    {activeDoc.metadata?.aiSummary || 'AI Summary parsing is complete.'}
+                  </p>
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* OCR text block */}
+              <div className="space-y-xs">
+                <h4 className="font-label-md text-primary uppercase tracking-widest text-[10px]">OCR Text Index Preview</h4>
+                <div className="p-md bg-surface-container-low rounded-lg border border-primary/10 max-h-[120px] overflow-y-auto font-mono text-[11px] text-on-surface-variant leading-relaxed">
+                  {activeDoc.metadata?.ocrText || 'No OCR transcript available.'}
+                </div>
+              </div>
+
+              {/* RAG Q&A Block */}
+              <div className="space-y-sm border-t border-outline-variant/30 pt-md">
+                <h4 className="font-label-md text-primary uppercase tracking-widest text-[10px]">Conversational Document Q&A</h4>
+                
+                {/* Chat conversation history */}
+                <div className="space-y-sm p-sm bg-surface-container-low/40 rounded-lg border border-outline-variant/25 max-h-[250px] overflow-y-auto scrollbar-thin">
+                  {chatHistory.length === 0 ? (
+                    <p className="text-[11px] text-on-surface-variant/70 italic text-center py-xs">
+                      Ask about clauses, claims, or liabilities in this document.
+                    </p>
+                  ) : (
+                    chatHistory.map((msg, idx) => (
+                      <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} gap-1`}>
+                        <span className="text-[9px] text-on-surface-variant/60 font-mono tracking-wider">
+                          {msg.role === 'user' ? 'COUNSEL' : 'LEXISAI'}
+                        </span>
+                        <div className={`max-w-[90%] rounded-lg p-sm text-[12px] leading-relaxed shadow-sm ${
+                          msg.role === 'user'
+                            ? 'bg-primary text-on-primary rounded-tr-none'
+                            : 'bg-surface-container-high border border-outline-variant/25 text-on-surface rounded-tl-none'
+                        }`}>
+                          <p className="font-body-md whitespace-pre-wrap">{msg.content}</p>
+                          
+                          {/* Render sources under assistant messages */}
+                          {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                            <div className="text-[9px] text-on-surface-variant/80 border-t border-outline-variant/20 pt-xs mt-xs">
+                              <span className="font-bold">Context Matches:</span>
+                              <ul className="list-disc list-inside space-y-[1px] mt-[2px] max-w-full">
+                                {msg.sources.map((s, sidx) => (
+                                  <li key={sidx} className="truncate text-on-surface-variant/70 italic" title={s.text}>
+                                    "{s.text}"
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {isAsking && (
+                    <div className="flex items-center gap-sm text-[10px] text-on-surface-variant/80 italic pl-xs animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"></span>
+                      Co-counsel analyzing document...
+                    </div>
+                  )}
+                </div>
+
+                {/* Input box */}
+                <div className="flex flex-col gap-xs">
+                  <div className="flex gap-xs">
+                    <input
+                      type="text"
+                      placeholder="Ask in Hindi, Tamil, English, etc..."
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      className="flex-1 bg-surface-container-low border border-outline-variant/50 rounded-lg px-md py-sm text-on-surface font-body-sm focus:outline-none focus:border-primary placeholder:text-on-surface-variant/40 animate-in fade-in"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAskQuestion();
+                      }}
+                      disabled={isAsking}
+                    />
+                    <Button size="sm" onClick={handleAskQuestion} isLoading={isAsking}>Ask</Button>
+                  </div>
+                  
+                  {/* Q&A Reply Language Selector */}
+                  <div className="flex items-center gap-xs bg-surface-container-low border border-outline-variant/30 rounded-lg px-sm py-[4px] text-[10px] font-medium text-on-surface-variant select-none self-end">
+                    <span>Reply Lang:</span>
+                    <select
+                      value={qaLanguage}
+                      onChange={(e) => setQaLanguage(e.target.value)}
+                      className="bg-transparent border-none text-primary font-bold focus:outline-none cursor-pointer text-[10px]"
+                    >
+                      {INDIAN_LANGUAGES.map(lang => (
+                        <option key={lang.code} value={lang.code} className="bg-surface-container-high text-on-surface">{lang.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-md animate-in fade-in duration-200">
+              {activeDoc.fileType === 'PDF' || activeDoc.fileName.toLowerCase().endsWith('.pdf') ? (
+                <iframe
+                  src={`${activeDoc.fileUrl}#toolbar=0`}
+                  className="w-full h-[450px] border border-outline-variant/30 rounded-lg bg-white"
+                  title={activeDoc.fileName}
+                />
+              ) : ['PNG', 'JPG', 'JPEG', 'WEBP', 'GIF'].includes(activeDoc.fileType.toUpperCase()) || 
+                /\.(png|jpe?g|webp|gif)$/i.test(activeDoc.fileName) ? (
+                <div className="w-full border border-outline-variant/30 rounded-lg overflow-hidden bg-surface-container-low flex justify-center p-sm">
+                  <img 
+                    src={activeDoc.fileUrl} 
+                    alt={activeDoc.fileName} 
+                    className="max-w-full max-h-[450px] object-contain rounded" 
+                  />
+                </div>
+              ) : (
+                <div className="p-lg border border-dashed border-outline-variant/45 rounded-lg text-center space-y-md">
+                  <p className="text-[12px] text-on-surface-variant leading-relaxed">
+                    Inline previewing is optimized for PDF and Images.
+                  </p>
+                  <a
+                    href={activeDoc.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block px-md py-sm bg-primary text-on-primary text-[12px] font-bold rounded-lg hover:bg-primary/95 transition-premium"
+                  >
+                    Open Document Link
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

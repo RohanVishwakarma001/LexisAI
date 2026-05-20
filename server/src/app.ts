@@ -16,11 +16,25 @@ import paymentsRoutes from './modules/payments/payments.routes';
 import hearingRoutes from './modules/hearings/hearings.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import tasksRoutes from './modules/tasks/tasks.routes';
+import notificationsRoutes from './modules/notifications/notifications.routes';
 
 const app: Application = express();
 
 // Security Middlewares
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+        connectSrc: ["'self'", "http://localhost:5000", "ws://localhost:5000"],
+      },
+    },
+  })
+);
 app.use(
   cors({
     origin: env.FRONTEND_URL,
@@ -57,6 +71,32 @@ app.get('/', (req, res) => {
   });
 });
 
+// Deep Health Check Route
+app.get('/api/v1/health', async (req, res) => {
+  try {
+    const prismaModule = await import('./database');
+    await prismaModule.default.$queryRaw`SELECT 1`;
+    res.status(200).json({
+      status: 'success',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: 'UP',
+        server: 'UP',
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: 'DOWN',
+        server: 'UP',
+      },
+      message: err.message,
+    });
+  }
+});
+
 // Setup Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/cases', caseRoutes);
@@ -67,6 +107,7 @@ app.use('/api/v1/payments', paymentsRoutes);
 app.use('/api/v1/hearings', hearingRoutes);
 app.use('/api/v1/audit', auditRoutes);
 app.use('/api/v1/tasks', tasksRoutes);
+app.use('/api/v1/notifications', notificationsRoutes);
 
 // Error Handling
 app.use(notFoundHandler);

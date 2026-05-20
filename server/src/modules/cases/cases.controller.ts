@@ -5,12 +5,14 @@ import { logAction } from '../audit/audit.service';
 
 export const getCases = asyncHandler(async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const cases = await casesService.getCases(user.id, user.role);
+  const page = parseInt(req.query.page as string || '1', 10);
+  const limit = parseInt(req.query.limit as string || '10', 10);
+
+  const paginatedResult = await casesService.getCases(user.id, user.role, page, limit);
   
   res.status(200).json({
     status: 'success',
-    results: cases.length,
-    data: { cases },
+    data: paginatedResult,
   });
 });
 
@@ -49,6 +51,19 @@ export const deleteCase = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json({
     status: 'success',
     message: 'Case deleted successfully',
+  });
+});
+
+export const restoreCase = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+  const restoredCase = await casesService.restoreCase(id as string, user.id, user.role);
+
+  await logAction(user.id, 'CASE_RESTORE', 'CASE', id as string);
+
+  res.status(200).json({
+    status: 'success',
+    data: { case: restoredCase },
   });
 });
 

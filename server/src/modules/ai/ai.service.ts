@@ -1,6 +1,9 @@
 import { AskAiInput } from './ai.schema';
 import prisma from '../../database';
 import { logger } from '../../utils/logger';
+import { AppError } from '../../utils/AppError';
+import { getEmbedding, cosineSimilarity } from '../../utils/openai';
+import { translateSandboxResponse } from './ai.translations';
 
 // ==========================================
 // 1. Types & Interfaces
@@ -11,6 +14,8 @@ export interface AiQueryResponse {
   timestamp: string;
   live: boolean;
   cached?: boolean;
+  conversationId: string;
+  aiQueriesUsed: number;
 }
 
 interface SandboxRule {
@@ -238,68 +243,219 @@ const SANDBOX_RULES: SandboxRule[] = [
 // 5. Main Unified Query Orchestrator
 // ==========================================
 
-export const queryAi = async (userId: string, input: AskAiInput): Promise<AiQueryResponse> => {
-  const { message, caseId } = input;
+export const queryAi = async (
+  userId: string,
+  input: AskAiInput,
+  onChunk?: (chunk: string) => void
+): Promise<AiQueryResponse> => {
+  const { message, caseId, language } = input;
   const msgLower = message.toLowerCase().trim();
 
-  // A. Check high-performance memory cache for exact hit
+  // A. Check user subscription and AI quota limit
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { subscription: true },
+  });
+
+  const plan = user?.subscription?.plan || 'FREE';
+  const queriesUsed = user?.aiQueriesUsed || 0;
+
+  let limit = 50;
+  if (plan === 'PROFESSIONAL') limit = 500;
+  else if (plan === 'ENTERPRISE') limit = 9999999;
+
+  if (queriesUsed >= limit) {
+    throw new AppError(`AI query monthly limit reached for plan: ${plan}. Please upgrade your subscription.`, 403);
+  }
+
+  // B. Resolve or create AIConversation
+  let currentConversationId = input.conversationId;
+  let conversation = null;
+
+  if (currentConversationId) {
+    conversation = await prisma.aIConversation.findUnique({
+      where: { id: currentConversationId, userId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          take: 10,
+        },
+      },
+    });
+  }
+
+  if (!conversation) {
+    const newConv = await prisma.aIConversation.create({
+      data: {
+        userId,
+        caseId: caseId || null,
+      },
+    });
+    currentConversationId = newConv.id;
+  }
+
+  // C. Check high-performance memory cache for exact hit
   const cacheKey = `${userId}:${caseId || 'global'}:${msgLower}`;
   const cachedResponse = aiCache.get(cacheKey);
   if (cachedResponse) {
     logger.info(`Cache Hit detected for AI query key: [${cacheKey}]. Returning immediate brief.`);
+    
+    // Save to message history
+    await prisma.aIMessage.create({
+      data: { conversationId: currentConversationId!, role: 'user', content: message }
+    });
+    await prisma.aIMessage.create({
+      data: { conversationId: currentConversationId!, role: 'assistant', content: cachedResponse }
+    });
+
+    // Increment usage
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { aiQueriesUsed: { increment: 1 } },
+    });
+
+    if (onChunk) {
+      const words = cachedResponse.split(' ');
+      for (const w of words) {
+        onChunk(w + ' ');
+        await new Promise(r => setTimeout(r, 20));
+      }
+    }
+
     return {
       response: cachedResponse,
       timestamp: new Date().toISOString(),
       live: false,
-      cached: true
+      cached: true,
+      conversationId: currentConversationId!,
+      aiQueriesUsed: updatedUser.aiQueriesUsed,
     };
   }
 
-  // B. Assemble Parent Case context
+  // D. Assemble Parent Case context
   let caseContext = '';
   try {
     if (caseId) {
       const parentCase = await prisma.case.findUnique({
         where: { id: caseId },
+        include: {
+          documents: {
+            where: { deletedAt: null },
+            include: {
+              chunks: true,
+            },
+          },
+        },
       });
       if (parentCase) {
-        caseContext = `Regarding the case file **"${parentCase.title}"**: `;
+        caseContext = `Regarding the case file **"${parentCase.title}"**:\n`;
+        const caseChunks: any[] = [];
+        if (parentCase.documents) {
+          for (const doc of parentCase.documents) {
+            if (doc.chunks) {
+              for (const chunk of doc.chunks) {
+                caseChunks.push({
+                  ...chunk,
+                  fileName: doc.fileName,
+                });
+              }
+            }
+          }
+        }
+
+        if (caseChunks.length > 0) {
+          const queryVector = await getEmbedding(message);
+          const scoredChunks = caseChunks.map((chunk) => {
+            const vector = chunk.embedding as unknown as number[];
+            const similarity = cosineSimilarity(queryVector, vector || []);
+            return {
+              ...chunk,
+              similarity,
+            };
+          });
+          scoredChunks.sort((a, b) => b.similarity - a.similarity);
+          const topChunks = scoredChunks.slice(0, 4);
+
+          if (topChunks.length > 0) {
+            caseContext += `Relevant document excerpts from this case file:\n`;
+            topChunks.forEach((c, idx) => {
+              caseContext += `[Excerpt ${idx + 1} from file "${c.fileName}"]: "${c.textContent}"\n`;
+            });
+            caseContext += `\nIntegrate details from these excerpts carefully in your response if relevant to the query.\n`;
+          }
+        } else {
+          caseContext += `(No documents are currently uploaded to this case).\n`;
+        }
       }
     }
   } catch (err) {
     logger.error(`Database transaction error during caseContext acquisition:`, err);
   }
 
-  // C. Execute Live LLM Request (if key is set and valid)
-  const apiKey = process.env.OPENAI_API_KEY;
-  const isKeyValid = apiKey && apiKey.trim() !== '' && !apiKey.includes('your_openai_api_key_here');
+  const languageNames: Record<string, string> = {
+    'hi-IN': 'Hindi',
+    'ta-IN': 'Tamil',
+    'te-IN': 'Telugu',
+    'bn-IN': 'Bengali',
+    'mr-IN': 'Marathi',
+    'kn-IN': 'Kannada',
+    'gu-IN': 'Gujarati',
+    'ml-IN': 'Malayalam',
+    'pa-IN': 'Punjabi',
+    'en-IN': 'English',
+  };
 
-  if (isKeyValid) {
-    const apiEndpoint = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1/chat/completions';
-    const modelName = process.env.OPENAI_MODEL || 'gpt-4o';
-    const requestTimeout = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '8000', 10);
+  const targetLanguage = language && languageNames[language] ? languageNames[language] : 'English';
 
-    // Instantiate abort controller to enforce client-side HTTP timeouts
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), requestTimeout);
-
-    try {
-      logger.info(`Live Mode active. Querying OpenAI API endpoint [${apiEndpoint}] utilizing model [${modelName}]...`);
-
-      const systemPrompt = `
+  const systemPrompt = `
 You are LexisAI, an elite, citation-backed Legal Co-Counsel AI specializing in Indian law and the Indian Constitution. You are a senior advocate and appellate attorney. 
 Deliver extremely professional, authoritative, and direct advice under the framework of Indian legal jurisprudence.
 Format your output using clear markdown with hierarchical headings (starting with "### " for major topics and "#### " for subsections), bullet points, and bold text. 
 Always cite specific Indian Supreme Court/High Court case precedents, articles of the Constitution of India, or sections of Indian statutes (e.g., Bharatiya Nyaya Sanhita/IPC, Bharatiya Nagarik Suraksha Sanhita/CrPC, Bharatiya Sakshya Adhiniyam/IEA, Indian Contract Act, etc.) where applicable.
+
+IMPORTANT: You MUST formulate and write your entire response, explanations, citations, and advice in ${targetLanguage}. Even if the user asks in English or any other language, your output reply MUST be delivered translated and formatted in ${targetLanguage}. Maintain your authoritative senior legal tone and markdown structure.
 `;
 
-      const promptPayload = `
+  const promptPayload = `
 Context details:
 ${caseContext ? `- Case Context: ${caseContext}` : '- Global Precedent Search (All Cases)'}
 - User Question: ${message}
 
 Provide a meticulous appellate legal analysis.
 `;
+
+  // E. Execute Live LLM Request (if key is set and valid)
+  const apiKey = process.env.OPENAI_API_KEY;
+  const isKeyValid = apiKey && apiKey.trim() !== '' && !apiKey.includes('your_openai_api_key_here');
+
+  let responseText = '';
+  let isLive = false;
+
+  if (isKeyValid) {
+    const apiEndpoint = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1/chat/completions';
+    const modelName = process.env.OPENAI_MODEL || 'gpt-4o';
+    const requestTimeout = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '15000', 10);
+
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), requestTimeout);
+
+    try {
+      logger.info(`Live Mode active. Querying OpenAI API endpoint [${apiEndpoint}] utilizing model [${modelName}]...`);
+
+      // Assemble prompt with conversation history (last 10 turns)
+      const promptMessages: any[] = [];
+      promptMessages.push({ role: 'system', content: systemPrompt });
+
+      if (conversation && conversation.messages.length > 0) {
+        for (const msg of conversation.messages) {
+          promptMessages.push({
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content,
+          });
+        }
+      }
+
+      promptMessages.push({ role: 'user', content: promptPayload });
 
       const response = await fetch(apiEndpoint, {
         method: 'POST',
@@ -309,12 +465,10 @@ Provide a meticulous appellate legal analysis.
         },
         body: JSON.stringify({
           model: modelName,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: promptPayload }
-          ],
+          messages: promptMessages,
           temperature: 0.3,
-          max_tokens: 1500
+          max_tokens: 1500,
+          stream: !!onChunk,
         }),
         signal: controller.signal
       });
@@ -322,58 +476,145 @@ Provide a meticulous appellate legal analysis.
       clearTimeout(timeoutHandle);
 
       if (response.ok) {
-        const payload = await response.json();
-        const responseText = payload.choices?.[0]?.message?.content;
-        if (responseText) {
-          logger.info('Live OpenAI response parsed successfully. Storing in cache.');
+        isLive = true;
+        if (onChunk && response.body) {
+          const bodyStream: any = response.body;
+          const decoder = new TextDecoder('utf-8');
           
-          // Write to cache
-          aiCache.set(cacheKey, responseText);
-
-          return {
-            response: responseText,
-            timestamp: new Date().toISOString(),
-            live: true,
-            cached: false
-          };
+          if (typeof bodyStream.getReader === 'function') {
+            const reader = bodyStream.getReader();
+            let done = false;
+            while (!done) {
+              const { value, done: doneReading } = await reader.read();
+              done = doneReading;
+              if (value) {
+                const chunkStr = decoder.decode(value);
+                const lines = chunkStr.split('\n');
+                for (const line of lines) {
+                  const cleanLine = line.trim();
+                  if (cleanLine.startsWith('data: ')) {
+                    const dataStr = cleanLine.substring(6).trim();
+                    if (dataStr === '[DONE]') break;
+                    try {
+                      const parsed = JSON.parse(dataStr);
+                      const delta = parsed.choices?.[0]?.delta?.content || '';
+                      if (delta) {
+                        responseText += delta;
+                        onChunk(delta);
+                      }
+                    } catch (e) {}
+                  }
+                }
+              }
+            }
+          } else {
+            for await (const chunk of bodyStream) {
+              const chunkStr = decoder.decode(chunk);
+              const lines = chunkStr.split('\n');
+              for (const line of lines) {
+                const cleanLine = line.trim();
+                if (cleanLine.startsWith('data: ')) {
+                  const dataStr = cleanLine.substring(6).trim();
+                  if (dataStr === '[DONE]') break;
+                  try {
+                    const parsed = JSON.parse(dataStr);
+                    const delta = parsed.choices?.[0]?.delta?.content || '';
+                    if (delta) {
+                      responseText += delta;
+                      onChunk(delta);
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+          }
+        } else {
+          const payload = await response.json();
+          responseText = payload.choices?.[0]?.message?.content || '';
         }
+      } else {
+        const errorPayload = await response.text();
+        logger.warn(`OpenAI HTTP error response (Status: ${response.status}). Body: ${errorPayload}. Diverting to local Sandbox Engine.`);
       }
-
-      const errorPayload = await response.text();
-      logger.warn(`OpenAI HTTP error response (Status: ${response.status}). Body: ${errorPayload}. Diverting to local Sandbox Engine.`);
     } catch (err: any) {
       clearTimeout(timeoutHandle);
       if (err.name === 'AbortError') {
-        logger.warn(`OpenAI connection timed out after exceeding threshold of ${requestTimeout}ms. Engaging smart failover.`);
+        logger.warn(`OpenAI connection timed out. Engaging smart failover.`);
       } else {
-        logger.warn('Failed to dispatch live OpenAI call due to local exceptions. Diverting to sandbox.', err);
+        logger.warn('Failed to dispatch live OpenAI call. Diverting to sandbox.', err);
       }
     }
-  } else {
-    logger.info('Unconfigured or default OpenAI key detected. Initiating smart fallback sandbox pipelines.');
   }
 
-  // D. Execute Smart Sandbox Strategy Pattern
-  let selectedGenerator: (message: string, caseContext: string, caseId?: string) => string = generateDefaultBrief;
-  
-  // Search for the first matching rule based on query keywords
-  for (const rule of SANDBOX_RULES) {
-    const hasMatch = rule.keys.some(key => msgLower.includes(key));
-    if (hasMatch) {
-      selectedGenerator = rule.generator;
-      break;
+  // F. Execute Smart Sandbox Strategy Pattern
+  if (!responseText) {
+    let selectedGenerator: (message: string, caseContext: string, caseId?: string) => string = generateDefaultBrief;
+    
+    for (const rule of SANDBOX_RULES) {
+      const hasMatch = rule.keys.some(key => msgLower.includes(key));
+      if (hasMatch) {
+        selectedGenerator = rule.generator;
+        break;
+      }
+    }
+
+    let type = 'default';
+    if (msgLower.includes('302') || msgLower.includes('murder') || msgLower.includes('ipc') || msgLower.includes('india')) {
+      type = '302';
+    } else if (msgLower.includes('summarize') || msgLower.includes('summary') || msgLower.includes('brief')) {
+      type = 'summary';
+    } else if (msgLower.includes('motion') || msgLower.includes('draft') || msgLower.includes('pleading') || msgLower.includes('suppress')) {
+      type = 'motion';
+    } else if (msgLower.includes('case law') || msgLower.includes('precedent') || msgLower.includes('citation')) {
+      type = 'precedent';
+    } else if (msgLower.includes('privacy') || msgLower.includes('data') || msgLower.includes('gdpr') || msgLower.includes('ccpa') || msgLower.includes('dpdp')) {
+      type = 'privacy';
+    }
+
+    const translated = translateSandboxResponse(type, targetLanguage, message, caseContext, caseId);
+    responseText = translated || selectedGenerator(message, caseContext, caseId);
+
+    if (onChunk) {
+      const words = responseText.split(' ');
+      for (const w of words) {
+        onChunk(w + ' ');
+        await new Promise(r => setTimeout(r, 25));
+      }
     }
   }
 
-  const generatedBrief = selectedGenerator(message, caseContext, caseId);
+  // G. Cache final response text
+  aiCache.set(cacheKey, responseText);
 
-  // Store the sandboxed brief in cache to optimize local hits
-  aiCache.set(cacheKey, generatedBrief);
+  // H. Save messages to DB conversational memory
+  await prisma.aIMessage.create({
+    data: {
+      conversationId: currentConversationId!,
+      role: 'user',
+      content: message,
+    }
+  });
+
+  await prisma.aIMessage.create({
+    data: {
+      conversationId: currentConversationId!,
+      role: 'assistant',
+      content: responseText,
+    }
+  });
+
+  // I. Increment user usage counter
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { aiQueriesUsed: { increment: 1 } },
+  });
 
   return {
-    response: generatedBrief,
+    response: responseText,
     timestamp: new Date().toISOString(),
-    live: false,
-    cached: false
+    live: isLive,
+    cached: false,
+    conversationId: currentConversationId!,
+    aiQueriesUsed: updatedUser.aiQueriesUsed,
   };
 };

@@ -2,7 +2,13 @@ import prisma from '../../database';
 import { TaskStatus } from '@prisma/client';
 import { AppError } from '../../utils/AppError';
 
-export const getTasksByCase = async (caseId: string, userId: string, userRole: string) => {
+export const getTasksByCase = async (
+  caseId: string,
+  userId: string,
+  userRole: string,
+  page: number = 1,
+  limit: number = 10
+) => {
   // Check access to case
   const dbCase = await prisma.case.findUnique({
     where: { id: caseId },
@@ -16,10 +22,24 @@ export const getTasksByCase = async (caseId: string, userId: string, userRole: s
     throw new AppError('Access denied to this case', 403);
   }
 
-  return prisma.task.findMany({
-    where: { caseId },
-    orderBy: { createdAt: 'desc' },
-  });
+  const skip = (page - 1) * limit;
+
+  const [tasks, total] = await Promise.all([
+    prisma.task.findMany({
+      where: { caseId },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.task.count({ where: { caseId } }),
+  ]);
+
+  return {
+    data: tasks,
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const createTask = async (

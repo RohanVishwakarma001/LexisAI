@@ -20,6 +20,10 @@ router
   .delete(casesController.deleteCase);
 
 router
+  .route('/:id/restore')
+  .post(casesController.restoreCase);
+
+router
   .route('/:id/messages')
   .get(casesController.getCaseMessages);
 

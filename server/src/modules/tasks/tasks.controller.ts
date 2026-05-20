@@ -7,16 +7,24 @@ import { logAction } from '../audit/audit.service';
 export const getTasks = asyncHandler(async (req: Request, res: Response) => {
   const user = (req as any).user;
   const { caseId } = req.query;
+  const page = parseInt(req.query.page as string || '1', 10);
+  const limit = parseInt(req.query.limit as string || '10', 10);
 
   if (!caseId) {
     throw new AppError('Please specify caseId query parameter', 400);
   }
 
-  const tasks = await tasksService.getTasksByCase(caseId as string, user.id, user.role);
+  const paginatedResult = await tasksService.getTasksByCase(
+    caseId as string,
+    user.id,
+    user.role,
+    page,
+    limit
+  );
 
   res.status(200).json({
     status: 'success',
-    data: { tasks },
+    data: paginatedResult,
   });
 });
 

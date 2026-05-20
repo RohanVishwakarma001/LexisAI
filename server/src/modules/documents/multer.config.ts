@@ -22,13 +22,18 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req: any, file: any, cb: any) => {
-  const allowedExtensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.txt'];
-  const ext = path.extname(file.originalname).toLowerCase();
+  const allowedMimeTypes = [
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'text/plain',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
 
-  if (allowedExtensions.includes(ext)) {
+  if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new AppError('Invalid file format. Only PDFs, text, Word docs, and Images are allowed.', 400), false);
+    cb(new AppError('Invalid file format. Only PDFs, TXT, DOCX, and JPEG/PNG images are allowed.', 415), false);
   }
 };
 
@@ -36,6 +41,7 @@ export const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB file limit
+    fileSize: 25 * 1024 * 1024, // 25MB file limit
   },
 });
+

@@ -151,6 +151,81 @@ export default function AIAnalyticsInsights() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Litigation Risk Matrix & Action Plan */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-lg border-t border-outline-variant/20 pt-lg animate-in fade-in duration-300">
+        {/* Risk Profile Card (Col 1-5) */}
+        <Card className="md:col-span-5 flex flex-col bg-surface-container-low">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-sm text-[16px] font-semibold">
+              <Award size={20} className="text-primary" />
+              AI Litigation Risk Profile
+            </CardTitle>
+            <p className="text-[12px] text-on-surface-variant">Real-time indicators based on docket severity and hearings.</p>
+          </CardHeader>
+          <CardContent className="flex-1 space-y-md bg-surface-container-lowest m-md rounded-lg border border-outline-variant/20 p-md flex flex-col justify-center">
+            <div className="flex justify-between items-center">
+              <span className="font-label-md text-on-surface-variant uppercase text-[11px] tracking-wider font-semibold">Overall Risk Level</span>
+              <span className={`px-sm py-[2px] rounded-full text-[11px] font-bold border ${
+                stats?.litigationRiskLevel === 'CRITICAL'
+                  ? 'bg-error/15 text-error border-error/30 animate-pulse'
+                  : stats?.litigationRiskLevel === 'MEDIUM'
+                  ? 'bg-warning/15 text-warning border-warning/30'
+                  : 'bg-success/15 text-success border-success/30'
+              }`}>
+                {stats?.litigationRiskLevel || 'LOW'}
+              </span>
+            </div>
+            
+            <div className="space-y-xs">
+              <div className="flex justify-between text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
+                <span>Case Health Score</span>
+                <span className="text-on-surface font-bold">{stats?.caseHealthScore || 100}%</span>
+              </div>
+              <div className="w-full bg-surface-container-highest rounded-full h-2.5 overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    (stats?.caseHealthScore || 100) > 75 
+                      ? 'bg-success' 
+                      : (stats?.caseHealthScore || 100) > 50 
+                      ? 'bg-warning' 
+                      : 'bg-error'
+                  }`}
+                  style={{ width: `${stats?.caseHealthScore || 100}%` }}
+                ></div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center text-[12px] text-on-surface-variant border-t border-outline-variant/10 pt-sm mt-sm">
+              <span>Severe Cases (Active)</span>
+              <span className="font-bold text-on-surface">{stats?.highSeverityCount || 0} file(s)</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Action Recommendations Card (Col 6-12) */}
+        <Card className="md:col-span-7 flex flex-col bg-surface-container-low">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-sm text-[16px] font-semibold">
+              <TrendingUp size={20} className="text-secondary" />
+              AI Legal Advisory & Action Plan
+            </CardTitle>
+            <p className="text-[12px] text-on-surface-variant">Recommended steps generated to mitigate case exposure.</p>
+          </CardHeader>
+          <CardContent className="flex-1 bg-surface-container-lowest m-md rounded-lg border border-outline-variant/20 p-md flex flex-col justify-center">
+            <ul className="space-y-sm">
+              {stats?.aiRecommendations?.map((rec, idx) => (
+                <li key={idx} className="flex gap-sm items-start text-[13px] text-on-surface-variant leading-relaxed">
+                  <div className="w-5 h-5 rounded-full bg-secondary/15 border border-secondary/30 flex items-center justify-center shrink-0 mt-[2px]">
+                    <span className="text-[9px] font-bold text-secondary">{idx + 1}</span>
+                  </div>
+                  <span>{rec}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

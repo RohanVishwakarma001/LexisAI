@@ -42,15 +42,17 @@ export default function CalendarView() {
     setIsLoading(true);
     try {
       const [hearingsRes, casesRes] = await Promise.all([
-        api.get('/hearings'),
-        api.get('/cases')
+        api.get('/hearings?limit=1000'),
+        api.get('/cases?limit=1000')
       ]);
 
       if (hearingsRes.data?.status === 'success') {
-        setHearings(hearingsRes.data.data.hearings);
+        const hearingsData = hearingsRes.data.data.hearings || hearingsRes.data.data.data || [];
+        setHearings(hearingsData);
       }
       if (casesRes.data?.status === 'success') {
-        setCases(casesRes.data.data.cases);
+        const casesData = casesRes.data.data.cases || casesRes.data.data.data || [];
+        setCases(casesData);
       }
     } catch (error) {
       console.error('Failed to load hearings & cases:', error);
@@ -117,7 +119,7 @@ export default function CalendarView() {
   // Map database hearings to react-big-calendar events format
   const events = hearings.map((h) => ({
     id: h.id,
-    title: `${h.case.title}: ${h.title}`,
+    title: `${h.case?.title || 'Unknown Case'}: ${h.title}`,
     start: new Date(h.date),
     end: new Date(new Date(h.date).getTime() + 60 * 60 * 1000), // 1 hour duration approximation
     resource: h,

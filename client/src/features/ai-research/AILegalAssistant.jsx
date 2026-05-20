@@ -5,6 +5,19 @@ import { Card } from '@/components/ui/Card';
 import api from '@/lib/axios';
 import toast from 'react-hot-toast';
 
+const INDIAN_LANGUAGES = [
+  { code: 'en-IN', name: 'English (India)' },
+  { code: 'hi-IN', name: 'हिन्दी (Hindi)' },
+  { code: 'ta-IN', name: 'தமிழ் (Tamil)' },
+  { code: 'te-IN', name: 'తెలుగు (Telugu)' },
+  { code: 'bn-IN', name: 'বাংলা (Bengali)' },
+  { code: 'mr-IN', name: 'मराठी (Marathi)' },
+  { code: 'kn-IN', name: 'ಕನ್ನಡ (Kannada)' },
+  { code: 'gu-IN', name: 'ગુજરાતી (Gujarati)' },
+  { code: 'ml-IN', name: 'മലയാളം (Malayalam)' },
+  { code: 'pa-IN', name: 'ਪੰਜਾਬੀ (Punjabi)' }
+];
+
 export default function AILegalAssistant() {
   const [messages, setMessages] = useState([
     {
@@ -18,13 +31,81 @@ export default function AILegalAssistant() {
   const [isLoading, setIsLoading] = useState(false);
   const chatEndRef = useRef(null);
 
+  // Speech Recognition States
+  const [isListening, setIsListening] = useState(false);
+  const [recognition, setRecognition] = useState(null);
+  const [speechLanguage, setSpeechLanguage] = useState('en-IN');
+
+  useEffect(() => {
+    if (recognition) {
+      recognition.lang = speechLanguage;
+    }
+  }, [speechLanguage, recognition]);
+
+  // Speech Recognition Setup
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = speechLanguage;
+      
+      rec.onstart = () => {
+        setIsListening(true);
+        toast.success('Listening. Speak your legal command...');
+      };
+      
+      rec.onerror = (event) => {
+        console.error('Speech recognition error', event);
+        if (event.error === 'not-allowed') {
+          toast.error('Microphone access blocked. Enable permission in settings.');
+        } else {
+          toast.error('Voice dictation failed or timed out.');
+        }
+        setIsListening(false);
+      };
+      
+      rec.onend = () => {
+        setIsListening(false);
+      };
+      
+      rec.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          setInputMessage(prev => prev ? `${prev} ${transcript}` : transcript);
+        }
+      };
+      
+      setRecognition(rec);
+    }
+  }, []);
+
+  const handleToggleListening = () => {
+    if (!recognition) {
+      toast.error('Web Speech API not supported. Please use Google Chrome or Microsoft Edge.');
+      return;
+    }
+    if (isListening) {
+      recognition.stop();
+    } else {
+      try {
+        recognition.start();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+
   // Fetch active cases to bind context
   useEffect(() => {
     const fetchCases = async () => {
       try {
-        const response = await api.get('/cases');
+        const response = await api.get('/cases?limit=1000');
         if (response.data?.status === 'success') {
-          setCases(response.data.data.cases);
+          const casesData = response.data.data.cases || response.data.data.data || [];
+          setCases(casesData);
         }
       } catch (error) {
         console.error('Error fetching cases in AI:', error);
@@ -53,6 +134,7 @@ export default function AILegalAssistant() {
       const response = await api.post('/ai/chat', {
         message: text,
         caseId: selectedCaseId || undefined,
+        language: speechLanguage,
       });
 
       if (response.data?.status === 'success') {
@@ -237,35 +319,56 @@ export default function AILegalAssistant() {
           onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
           className="p-sm md:p-md border-t border-outline-variant/30 bg-surface-container-high/40 backdrop-blur-sm shrink-0"
         >
-          <div className="relative flex items-center w-full max-w-[900px] mx-auto px-xs md:px-0">
-            <button 
-              type="button"
-              className="absolute left-md md:left-5 p-2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
-              onClick={() => toast.success('Mic recording initialized (simulation)')}
-              aria-label="Dictate brief command"
-            >
-              <Mic size={18} />
-            </button>
-            
-            <input 
-              type="text" 
-              className="w-full bg-surface-container-low border border-outline-variant/45 rounded-full py-md pl-14 pr-16 text-on-surface font-body-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-premium text-[13px] md:text-[14px]"
-              placeholder="Ask a legal question, request a draft pleading, or query case precedents..."
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              disabled={isLoading}
-              required
-            />
-            
-            <Button 
-              size="icon" 
-              type="submit"
-              disabled={isLoading || !inputMessage.trim()}
-              className="absolute right-2 md:right-2 rounded-full w-9 h-9 p-0 flex items-center justify-center shrink-0 shadow-sm active:scale-95 transition-premium"
-              aria-label="Dispatch message to AI research assistant"
-            >
-              <Send size={14} />
-            </Button>
+          <div className="flex flex-col sm:flex-row items-center gap-sm w-full max-w-[900px] mx-auto">
+            {/* Input Wrapper */}
+            <div className="relative flex items-center w-full">
+              <button 
+                type="button"
+                className={`absolute left-md md:left-5 p-2 rounded-full transition-all cursor-pointer ${
+                  isListening 
+                    ? 'text-error bg-error/15 animate-pulse border border-error/30 scale-110' 
+                    : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-high'
+                }`}
+                onClick={handleToggleListening}
+                aria-label="Dictate brief command"
+              >
+                <Mic size={18} />
+              </button>
+              
+              <input 
+                type="text" 
+                className="w-full bg-surface-container-low border border-outline-variant/45 rounded-full py-md pl-14 pr-16 text-on-surface font-body-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-premium text-[13px] md:text-[14px]"
+                placeholder="Ask in Hindi, Tamil, English, etc. co-counsel replies in the same language..."
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                disabled={isLoading}
+                required
+              />
+              
+              <Button 
+                size="icon" 
+                type="submit"
+                disabled={isLoading || !inputMessage.trim()}
+                className="absolute right-2 md:right-2 rounded-full w-9 h-9 p-0 flex items-center justify-center shrink-0 shadow-sm active:scale-95 transition-premium"
+                aria-label="Dispatch message to AI research assistant"
+              >
+                <Send size={14} />
+              </Button>
+            </div>
+
+            {/* Language Selector */}
+            <div className="flex items-center gap-xs bg-surface-container-low border border-outline-variant/40 rounded-full px-sm py-xs text-[11px] font-medium text-on-surface-variant select-none shrink-0 self-end sm:self-auto">
+              <span>Dictate Lang:</span>
+              <select
+                value={speechLanguage}
+                onChange={(e) => setSpeechLanguage(e.target.value)}
+                className="bg-transparent border-none text-primary font-bold focus:outline-none cursor-pointer text-[11px]"
+              >
+                {INDIAN_LANGUAGES.map(lang => (
+                  <option key={lang.code} value={lang.code} className="bg-surface-container-high text-on-surface">{lang.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <p className="text-center mt-xs text-[9px] md:text-[10px] text-on-surface-variant/80 flex items-center justify-center gap-1 select-none">
             <AlertCircle size={10} className="shrink-0 text-on-surface-variant" />

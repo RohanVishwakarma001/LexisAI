@@ -60,13 +60,13 @@ export const deleteDocument = asyncHandler(async (req: Request, res: Response) =
 
 export const documentQA = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { question } = req.body;
+  const { question, history, language } = req.body;
 
   if (!question) {
     throw new AppError('Question must be provided', 400);
   }
 
-  const result = await documentsService.documentQA(id as string, question);
+  const result = await documentsService.documentQA(id as string, question, history, language);
 
   res.status(200).json({
     status: 'success',

@@ -5,7 +5,7 @@ import { AppError } from '../../utils/AppError';
 import { purgeFile } from '../../utils/cloudinary';
 import { queueEmail } from '../notifications/queue.service';
 
-export const getCases = async (userId: string, role: Role) => {
+export const getCases = async (userId: string, role: Role, page: number = 1, limit: number = 10) => {
   let filter: any = {};
   if (role === Role.LAWYER) {
     filter = { lawyerId: userId };
@@ -13,36 +13,55 @@ export const getCases = async (userId: string, role: Role) => {
     filter = { clientId: userId };
   }
   
-  return prisma.case.findMany({
-    where: {
-      ...filter,
-      deletedAt: null,
-    },
-    include: {
-      client: {
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          avatar: true,
+  const skip = (page - 1) * limit;
+
+  const [cases, total] = await Promise.all([
+    prisma.case.findMany({
+      where: {
+        ...filter,
+        deletedAt: null,
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
+        lawyer: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
+        _count: {
+          select: { documents: true },
         },
       },
-      lawyer: {
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          avatar: true,
-        },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.case.count({
+      where: {
+        ...filter,
+        deletedAt: null,
       },
-      _count: {
-        select: { documents: true },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+    }),
+  ]);
+  
+  return {
+    data: cases,
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const createCase = async (userId: string, role: Role, input: CreateCaseInput) => {
@@ -127,7 +146,7 @@ export const deleteCase = async (caseId: string, userId: string, role: Role) => 
     where: { id: caseId },
   });
 
-  if (!existingCase) {
+  if (!existingCase || existingCase.deletedAt) {
     throw new AppError('Case not found', 404);
   }
 
@@ -135,24 +154,29 @@ export const deleteCase = async (caseId: string, userId: string, role: Role) => 
     throw new AppError('You do not have permission to delete this case', 403);
   }
 
-  // 1. Fetch all documents associated with this case
-  const documents = await prisma.document.findMany({
-    where: { caseId },
+  // Soft delete case
+  return prisma.case.update({
+    where: { id: caseId },
+    data: { deletedAt: new Date() },
+  });
+};
+
+export const restoreCase = async (caseId: string, userId: string, role: Role) => {
+  const existingCase = await prisma.case.findUnique({
+    where: { id: caseId },
   });
 
-  // 2. Cascade purge all files from physical storage (Cloudinary or local sandbox disk)
-  for (const doc of documents) {
-    await purgeFile(doc.fileUrl, doc.metadata);
+  if (!existingCase) {
+    throw new AppError('Case not found', 404);
   }
 
-  // 3. Hard delete all document rows associated with this case in the database
-  await prisma.document.deleteMany({
-    where: { caseId },
-  });
+  if (role !== Role.ADMIN && existingCase.clientId !== userId) {
+    throw new AppError('You do not have permission to restore this case', 403);
+  }
 
-  // 4. Hard delete the case record itself permanently from the database
-  return prisma.case.delete({
+  return prisma.case.update({
     where: { id: caseId },
+    data: { deletedAt: null },
   });
 };
 

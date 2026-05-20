@@ -27,8 +27,9 @@ const AIAnalyticsInsights = lazy(() => import('@/features/analytics/AIAnalyticsI
 const AdminPanelFirmManagement = lazy(() => import('@/features/admin/AdminPanelFirmManagement'));
 const SettingsOrganization = lazy(() => import('@/features/settings/SettingsOrganization'));
 const CalendarView = lazy(() => import('@/features/calendar/CalendarView'));
+const NotFound = lazy(() => import('@/features/public/NotFound'));
 
-// Auth Route: Redirects to /dashboard or /dashboard/admin if logged in
+// Auth Route: Redirects to /dashboard if logged in
 const AuthRoute = () => {
   const { isAuthenticated, user } = useAuthStore();
   if (isAuthenticated) {
@@ -41,6 +42,13 @@ const AuthRoute = () => {
 const ProtectedRoute = () => {
   const { isAuthenticated } = useAuthStore();
   return isAuthenticated ? <Outlet /> : <Navigate to="/sign-in" replace />;
+};
+
+// Admin Route: Redirects to /dashboard if not admin
+const AdminRoute = () => {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/sign-in" replace />;
+  return user?.role === 'ADMIN' ? <Outlet /> : <Navigate to="/dashboard" replace />;
 };
 
 export function AppRouter() {
@@ -77,14 +85,19 @@ export function AppRouter() {
               <Route path="cases" element={<CaseManagement />} />
               <Route path="research" element={<AILegalAssistant />} />
               <Route path="analytics" element={<AIAnalyticsInsights />} />
-              <Route path="admin" element={<AdminPanelFirmManagement />} />
+              
+              {/* Admin Only routes */}
+              <Route element={<AdminRoute />}>
+                <Route path="admin" element={<AdminPanelFirmManagement />} />
+              </Route>
+
               <Route path="settings" element={<SettingsOrganization />} />
               <Route path="calendar" element={<CalendarView />} />
             </Route>
           </Route>
 
           {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

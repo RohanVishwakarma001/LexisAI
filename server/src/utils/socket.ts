@@ -24,6 +24,12 @@ export const initSocket = (server: HttpServer) => {
       logger.info(`👤 Client ${socket.id} joined case room: ${caseId}`);
     });
 
+    // Join user notification room
+    socket.on('join_user', (userId: string) => {
+      socket.join(userId);
+      logger.info(`👤 Client ${socket.id} joined user notification room: ${userId}`);
+    });
+
     // Leave case room
     socket.on('leave_case', (caseId: string) => {
       socket.leave(caseId);

@@ -24,18 +24,21 @@ export default function AdminPanelFirmManagement() {
     try {
       const [usersRes, casesRes, docsRes] = await Promise.all([
         api.get('/auth/users'),
-        api.get('/cases'),
+        api.get('/cases?limit=1000'),
         api.get('/documents'),
       ]);
 
       if (usersRes.data?.status === 'success') {
-        setUsers(usersRes.data.data.users);
+        const usersData = usersRes.data.data.users || usersRes.data.data.data || [];
+        setUsers(usersData);
       }
       if (casesRes.data?.status === 'success') {
-        setCases(casesRes.data.data.cases);
+        const casesData = casesRes.data.data.cases || casesRes.data.data.data || [];
+        setCases(casesData);
       }
       if (docsRes.data?.status === 'success') {
-        setDocuments(docsRes.data.data.documents);
+        const docsData = docsRes.data.data.documents || docsRes.data.data.data || [];
+        setDocuments(docsData);
       }
     } catch (err) {
       console.error('Error fetching admin data:', err);

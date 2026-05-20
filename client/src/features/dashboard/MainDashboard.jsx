@@ -46,8 +46,40 @@ export default function MainDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary"></div>
+      <div className="space-y-lg max-w-container-max mx-auto px-xs md:px-0 animate-pulse">
+        {/* Hero Banner Skeleton */}
+        <div className="h-32 bg-surface-container-high/40 rounded-xl border border-outline-variant/20" />
+        
+        {/* Stats Grid Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 bg-surface-container-low border border-outline-variant/20 rounded-xl p-md flex flex-col justify-between">
+              <div className="h-3.5 w-1/3 bg-surface-container-highest rounded" />
+              <div className="h-6 w-1/2 bg-surface-container-highest rounded" />
+              <div className="h-3 w-1/4 bg-surface-container-highest rounded" />
+            </div>
+          ))}
+        </div>
+
+        {/* Main Bento Layout Grid Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg">
+          <div className="lg:col-span-8 h-80 bg-surface-container-low border border-outline-variant/20 rounded-xl p-md space-y-md">
+            <div className="h-6 w-1/4 bg-surface-container-highest rounded" />
+            <div className="space-y-sm">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-10 bg-surface-container-highest/50 rounded" />
+              ))}
+            </div>
+          </div>
+          <div className="lg:col-span-4 h-80 bg-surface-container-low border border-outline-variant/20 rounded-xl p-md space-y-md">
+            <div className="h-6 w-1/3 bg-surface-container-highest rounded" />
+            <div className="space-y-sm">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-16 bg-surface-container-highest/50 rounded animate-pulse" />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

@@ -1,10 +1,11 @@
 import prisma from '../../database';
 import { CreateHearingInput, UpdateHearingInput } from './hearings.schema';
-import { Role } from '@prisma/client';
+import { Role, NotificationType } from '@prisma/client';
 import { AppError } from '../../utils/AppError';
 import { queueEmail } from '../notifications/queue.service';
+import { createNotification } from '../notifications/notifications.service';
 
-export const getHearings = async (userId: string, role: Role) => {
+export const getHearings = async (userId: string, role: Role, page: number = 1, limit: number = 10) => {
   let caseFilter: any = {};
   if (role === Role.LAWYER) {
     caseFilter = { lawyerId: userId };
@@ -12,27 +13,48 @@ export const getHearings = async (userId: string, role: Role) => {
     caseFilter = { clientId: userId };
   }
 
-  return prisma.hearing.findMany({
-    where: {
-      case: {
-        ...caseFilter,
-        deletedAt: null,
-      },
-    },
-    include: {
-      case: {
-        select: {
-          id: true,
-          title: true,
-          clientId: true,
-          lawyerId: true,
-          client: { select: { email: true, firstName: true } },
-          lawyer: { select: { email: true, firstName: true } },
+  const skip = (page - 1) * limit;
+
+  const [hearings, total] = await Promise.all([
+    prisma.hearing.findMany({
+      where: {
+        case: {
+          ...caseFilter,
+          deletedAt: null,
         },
       },
-    },
-    orderBy: { date: 'asc' },
-  });
+      include: {
+        case: {
+          select: {
+            id: true,
+            title: true,
+            clientId: true,
+            lawyerId: true,
+            client: { select: { email: true, firstName: true } },
+            lawyer: { select: { email: true, firstName: true } },
+          },
+        },
+      },
+      orderBy: { date: 'asc' },
+      skip,
+      take: limit,
+    }),
+    prisma.hearing.count({
+      where: {
+        case: {
+          ...caseFilter,
+          deletedAt: null,
+        },
+      },
+    }),
+  ]);
+
+  return {
+    data: hearings,
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const createHearing = async (userId: string, role: Role, input: CreateHearingInput) => {
@@ -78,6 +100,13 @@ export const createHearing = async (userId: string, role: Role, input: CreateHea
          <p><strong>Date & Time:</strong> ${formattedDate}</p>
          <p><strong>Location:</strong> ${input.location || 'N/A'}</p>`
       );
+      await createNotification(
+        parentCase.client.id,
+        NotificationType.HEARING_REMINDER,
+        'Court Hearing Scheduled',
+        `A new court hearing "${input.title}" has been scheduled for case "${parentCase.title}" on ${formattedDate}`,
+        hearing.id
+      );
     }
     if (parentCase.lawyer) {
       await queueEmail(
@@ -89,9 +118,16 @@ export const createHearing = async (userId: string, role: Role, input: CreateHea
          <p><strong>Date & Time:</strong> ${formattedDate}</p>
          <p><strong>Location:</strong> ${input.location || 'N/A'}</p>`
       );
+      await createNotification(
+        parentCase.lawyer.id,
+        NotificationType.HEARING_REMINDER,
+        'Court Hearing Scheduled',
+        `A new court hearing "${input.title}" has been scheduled for case "${parentCase.title}" on ${formattedDate}`,
+        hearing.id
+      );
     }
   } catch (err) {
-    console.error('Failed to send hearing scheduled email:', err);
+    console.error('Failed to send hearing scheduled email/notification:', err);
   }
 
   return hearing;

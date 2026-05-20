@@ -30,9 +30,10 @@ export default function CaseManagementKanbanTimeline() {
   const fetchCases = async () => {
     setIsLoading(true);
     try {
-      const response = await api.get('/cases');
+      const response = await api.get('/cases?limit=1000');
       if (response.data?.status === 'success') {
-        setCases(response.data.data.cases);
+        const casesData = response.data.data.cases || response.data.data.data || [];
+        setCases(casesData);
       }
     } catch (error) {
       console.error('Error fetching cases:', error);
@@ -167,8 +168,28 @@ export default function CaseManagementKanbanTimeline() {
 
       {/* Case content */}
       {isLoading ? (
-        <div className="flex-grow flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary"></div>
+        <div className="flex-1 flex gap-lg overflow-x-auto pb-lg snap-x animate-pulse">
+          {[1, 2, 3, 4].map((colIndex) => (
+            <div key={colIndex} className="min-w-[300px] w-[300px] bg-surface-container/30 rounded-xl flex flex-col snap-start border border-outline-variant/20 h-full">
+              <div className="p-md border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-high/80 rounded-t-xl">
+                <div className="h-4 w-24 bg-surface-container-highest rounded" />
+                <div className="h-5 w-8 bg-surface-container-highest rounded-full" />
+              </div>
+              <div className="p-md space-y-md flex-1">
+                {[1, 2].map((cardIndex) => (
+                  <div key={cardIndex} className="p-md bg-surface-container-low border border-outline-variant/25 rounded-lg space-y-sm">
+                    <div className="h-4 w-3/4 bg-surface-container-highest rounded" />
+                    <div className="h-3 w-5/6 bg-surface-container-highest rounded" />
+                    <div className="h-3 w-1/2 bg-surface-container-highest rounded" />
+                    <div className="flex gap-2 pt-sm">
+                      <div className="h-6 w-16 bg-surface-container-highest rounded" />
+                      <div className="h-6 w-16 bg-surface-container-highest rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       ) : currentView === 'kanban' ? (
         /* Kanban Board */

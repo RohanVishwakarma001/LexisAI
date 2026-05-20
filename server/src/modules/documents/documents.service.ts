@@ -1,5 +1,5 @@
 import prisma from '../../database';
-import { Role } from '@prisma/client';
+import { Role, NotificationType } from '@prisma/client';
 import { AppError } from '../../utils/AppError';
 import path from 'path';
 import { uploadToCloudinary, purgeFile } from '../../utils/cloudinary';
@@ -7,6 +7,9 @@ import { env } from '../../config/env';
 import fs from 'fs';
 import { getEmbedding, cosineSimilarity } from '../../utils/openai';
 import { queueEmail } from '../notifications/queue.service';
+import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
+import { createNotification } from '../notifications/notifications.service';
 
 export const getDocuments = async (userId: string, role: Role, caseId?: string) => {
   let caseFilter: any = {};
@@ -57,26 +60,66 @@ export const createDocument = async (
     throw new AppError('Associated case file not found', 404);
   }
 
-  // Simulate context-aware AI text extraction and brief summarizes based on extension
+  // Context-aware AI text extraction and brief summarization based on extension
   const ext = path.extname(file.originalname).toLowerCase();
-  let ocrText = 'Simulated document OCR analysis transcript.';
-  let aiSummary = 'Automatic AI analysis summarization complete.';
+  let ocrText = '';
+  try {
+    if (ext === '.pdf') {
+      const dataBuffer = fs.readFileSync(file.path);
+      const parsed = await (pdf as any)(dataBuffer);
+      ocrText = parsed.text || '';
+    } else if (ext === '.docx') {
+      const result = await mammoth.extractRawText({ path: file.path });
+      ocrText = result.value || '';
+    } else if (ext === '.txt') {
+      ocrText = fs.readFileSync(file.path, 'utf8');
+    } else if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+      ocrText = `Image evidence file: ${file.originalname}. Size: ${file.size} bytes.`;
+    }
+  } catch (err: any) {
+    console.error('Failed to extract text from document:', err);
+    ocrText = `Text extraction failed for ${file.originalname}. Error: ${err.message}`;
+  }
 
-  if (ext === '.pdf') {
-    ocrText =
-      'COMPLAINT AND DEMAND FOR JURY TRIAL. Plaintiff Doe hereby sues Defendant TechCorp for breach of warranty and failed software delivery. Damaged expectations exceed $150,000 under Master Services Agreement Exhibit B.';
-    aiSummary =
-      'This document represents a formal legal complaint alleging breach of contract and software warranty failure. Key requests include a jury trial, compensatory damages, and interest.';
-  } else if (['.png', '.jpg', '.jpeg'].includes(ext)) {
-    ocrText =
-      'METADATA SCANNER: Evidence photo captured on 2026-05-12. Location Coordinates: 40.7128 N, 74.0060 W. High-resolution scan confirms vehicle rear impact and structural frame fracture.';
-    aiSummary =
-      'Image file evidence showing physical scene conditions. AI analysis confirms structural rear impact collision damage and provides location metadata coordinates.';
-  } else if (ext === '.txt') {
-    ocrText =
-      'CASE NOTES BRIEF. Internal deposition checklist: verify timeline anomalies on corporate ledger, examine ledger timestamps, and interview chief audit representative Jenkins.';
-    aiSummary =
-      'Internal checklist for depositions regarding audit timeline inconsistencies and potential ledger anomalies.';
+  if (!ocrText || ocrText.trim().length === 0) {
+    ocrText = `Empty document text container for ${file.originalname}.`;
+  }
+
+  let aiSummary = 'Automatic AI analysis summarization complete.';
+  const apiKey = env.OPENAI_API_KEY;
+  const isDummyKey = !apiKey || apiKey.startsWith('sk-proj-your') || apiKey.includes('sk-proj-xnPzMr');
+
+  if (apiKey && !isDummyKey && ocrText.trim().length > 10) {
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert Indian legal assistant. Summarize the following legal document text in 2-3 concise sentences.',
+            },
+            { role: 'user', content: ocrText.substring(0, 10000) },
+          ],
+          temperature: 0.3,
+          max_tokens: 200,
+        }),
+      });
+
+      if (response.ok) {
+        const payload = await response.json();
+        aiSummary = payload.choices?.[0]?.message?.content || aiSummary;
+      }
+    } catch (summaryErr) {
+      console.error('Failed to generate real AI summary:', summaryErr);
+    }
+  } else {
+    aiSummary = `Document file ${file.originalname} processed. Simulated AI analysis confirms standard layout structure and keywords.`;
   }
 
   // Attempt Cloudinary ingestion with a graceful local disk fallback if credentials aren't present
@@ -151,7 +194,7 @@ export const createDocument = async (
     console.error('Failed to generate document chunks/embeddings:', chunkError);
   }
 
-  // Queue Email Notifications (Feature 1)
+  // Queue Email Notifications & Live Notifications
   try {
     if (parentCase.client && parentCase.client.id !== userId) {
       await queueEmail(
@@ -159,12 +202,26 @@ export const createDocument = async (
         'New Document Uploaded',
         `<h1>New Document Uploaded</h1><p>A new file <strong>${file.originalname}</strong> has been uploaded to Case: <strong>${parentCase.title}</strong> by the system.</p>`
       );
+      await createNotification(
+        parentCase.client.id,
+        NotificationType.DOCUMENT_UPLOADED,
+        'New Document Uploaded',
+        `A new document "${file.originalname}" was uploaded to case "${parentCase.title}"`,
+        newDoc.id
+      );
     }
     if (parentCase.lawyer && parentCase.lawyer.id !== userId) {
       await queueEmail(
         parentCase.lawyer.email,
         'New Document Uploaded',
         `<h1>New Document Uploaded</h1><p>A new file <strong>${file.originalname}</strong> has been uploaded to Case: <strong>${parentCase.title}</strong>.</p>`
+      );
+      await createNotification(
+        parentCase.lawyer.id,
+        NotificationType.DOCUMENT_UPLOADED,
+        'New Document Uploaded',
+        `A new document "${file.originalname}" was uploaded to case "${parentCase.title}"`,
+        newDoc.id
       );
     }
   } catch (emailErr) {
@@ -204,7 +261,12 @@ export const deleteDocument = async (documentId: string, userId: string, role: R
   });
 };
 
-export const documentQA = async (documentId: string, question: string) => {
+export const documentQA = async (
+  documentId: string,
+  question: string,
+  history?: { role: 'user' | 'assistant'; content: string }[],
+  language?: string
+) => {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
     include: {
@@ -253,6 +315,40 @@ export const documentQA = async (documentId: string, question: string) => {
 
   if (apiKey && !isDummyKey) {
     try {
+      const languageNames: Record<string, string> = {
+        'hi-IN': 'Hindi',
+        'ta-IN': 'Tamil',
+        'te-IN': 'Telugu',
+        'bn-IN': 'Bengali',
+        'mr-IN': 'Marathi',
+        'kn-IN': 'Kannada',
+        'gu-IN': 'Gujarati',
+        'ml-IN': 'Malayalam',
+        'pa-IN': 'Punjabi',
+        'en-IN': 'English',
+      };
+
+      const targetLanguage = language && languageNames[language] ? languageNames[language] : 'English';
+
+      const promptMessages: any[] = [
+        {
+          role: 'system',
+          content: `You are an expert Indian legal assistant. Answer the user's question about the provided legal document context. You MUST formulate and write your entire response strictly in ${targetLanguage}. Even if the user asks in English or another language, your output reply MUST be delivered translated and formatted in ${targetLanguage}. Be precise and ground your answer strictly in the provided document source text. If the answer is not mentioned, say 'I cannot find that in the document'.\n\n[DOCUMENT CONTENT]\n${contextText}`,
+        }
+      ];
+
+      if (history && history.length > 0) {
+        const recentHistory = history.slice(-10);
+        for (const msg of recentHistory) {
+          promptMessages.push({
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content,
+          });
+        }
+      }
+
+      promptMessages.push({ role: 'user', content: question });
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -261,13 +357,7 @@ export const documentQA = async (documentId: string, question: string) => {
         },
         body: JSON.stringify({
           model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an expert Indian legal assistant. Answer the user's question about the provided legal document context. Be precise and ground your answer strictly in the provided document source text. If the answer is not mentioned, say 'I cannot find that in the document'.\n\n[DOCUMENT CONTENT]\n${contextText}`,
-            },
-            { role: 'user', content: question },
-          ],
+          messages: promptMessages,
           temperature: 0.2,
           max_tokens: 800,
         }),

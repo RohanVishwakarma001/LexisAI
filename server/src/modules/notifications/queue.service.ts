@@ -51,7 +51,17 @@ try {
 export const queueEmail = async (to: string, subject: string, html: string) => {
   if (!useRedisFallback && emailQueue) {
     try {
-      await emailQueue.add('sendEmail', { to, subject, html });
+      await emailQueue.add(
+        'sendEmail',
+        { to, subject, html },
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000,
+          },
+        }
+      );
       logger.info(`⚙️ Email job added to BullMQ: "${subject}" to ${to}`);
     } catch (err) {
       logger.warn('⚙️ BullMQ add failed, executing email in-memory fallback:', err);
